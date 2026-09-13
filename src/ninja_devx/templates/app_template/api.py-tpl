@@ -1,0 +1,19 @@
+from django.http import HttpRequest
+from ninja_devx import Controller, ControllerOptions, get
+
+from .schemas import StatusOut
+from .services import {{ camel_case_app_name }}Service
+
+
+class {{ camel_case_app_name }}Controller(Controller):
+    """Mount with ``mount(api, {"/{{ app_name }}": {{ camel_case_app_name }}Controller}, container=container)``;
+    the container builds the service (and whatever the service needs)."""
+
+    options = ControllerOptions(tags=["{{ app_name }}"])
+
+    def __init__(self, service: {{ camel_case_app_name }}Service) -> None:
+        self.service = service
+
+    @get("/status", response=StatusOut, auth=None)
+    def status(self, request: HttpRequest) -> StatusOut:
+        return StatusOut(app="{{ app_name }}", status=self.service.status())

@@ -1,0 +1,14 @@
+name: Design proposal
+description: Describe a concrete application problem and the proposed API.
+body:
+  - type: textarea
+    id: problem
+    attributes: {label: Application problem, description: Explain the operation and current implementation cost.}
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes: {label: Proposed behavior, description: Include a short usage example and compatibility effects.}
+    validations: {required: true}
+  - type: textarea
+    id: alternatives
+    attributes: {label: Alternatives, description: Existing hooks or application code considered.}

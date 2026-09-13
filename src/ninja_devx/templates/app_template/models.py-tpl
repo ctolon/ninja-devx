@@ -1,0 +1,4 @@
+from django.db import models  # noqa: F401
+
+# Define models, run ``manage.py makemigrations {{ app_name }}``, then generate typed
+# schemas, a CRUD controller and tests with ``manage.py devx_scaffold {{ app_name }}.<Model>``.

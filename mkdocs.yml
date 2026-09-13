@@ -1,0 +1,153 @@
+site_name: ninja-devx
+site_description: Developer productivity toolkit for Django Ninja — typed controllers, CRUD, permissions, layers, DI and tooling
+site_url: https://ctolon.github.io/ninja-devx/
+repo_url: https://github.com/ctolon/ninja-devx
+repo_name: ctolon/ninja-devx
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 The ninja-devx contributors — Apache License 2.0
+strict: true
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - content.tooltips
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: deep orange
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: deep orange
+      toggle: { icon: material/weather-sunny, name: Light mode }
+
+extra_javascript:
+  - javascripts/tables.js
+
+extra_css:
+  - stylesheets/accessibility.css
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.details
+  - pymdownx.highlight: { anchor_linenums: true, line_spans: __span, pygments_lang_class: true }
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.superfences
+  - pymdownx.tabbed: { alternate_style: true }
+  - pymdownx.tasklist: { custom_checkbox: true }
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            members_order: source
+            docstring_style: sphinx
+            show_signature_annotations: true
+            separate_signature: true
+            show_root_heading: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+      - Tutorial: getting-started/tutorial.md
+      - Examples: getting-started/examples.md
+  - Guides:
+      - guide/index.md
+      - Building APIs:
+          - Controllers: guide/controllers.md
+          - Permissions: guide/permissions.md
+          - Object permissions: guide/object-permissions.md
+          - Errors: guide/errors.md
+          - Mounting and versioning: guide/mounting.md
+      - Data and CRUD:
+          - CRUD: guide/crud.md
+          - Multi-tenancy: guide/tenancy.md
+          - HTTP caching and locking: guide/conditional.md
+          - Field visibility and shaping: guide/visibility.md
+      - Architecture:
+          - Dependency injection: guide/dependency-injection.md
+          - Services and layers: guide/layers.md
+          - Architecture recipes: guide/recipes.md
+      - Runtime:
+          - Async and sync: guide/async.md
+          - Hooks, transactions, idempotency: guide/hooks.md
+          - Throttling: guide/throttling.md
+          - Middleware, health, rendering: guide/middleware.md
+          - Settings: guide/settings.md
+          - Translations: guide/i18n.md
+      - Batteries (contrib):
+          - API keys: guide/api-keys.md
+          - Audit log: guide/audit.md
+          - Webhooks: guide/webhooks.md
+          - Direct uploads: guide/uploads.md
+      - Quality and tooling:
+          - Testing: guide/testing.md
+          - Code generation: guide/codegen.md
+          - System checks: guide/checks.md
+          - Typing: guide/typing.md
+  - Reference:
+      - options/index.md
+      - Controllers and operations: options/controllers.md
+      - CRUD: options/crud.md
+      - Permissions and visibility: options/permissions.md
+      - Dependency injection: options/dependency-injection.md
+      - Tenancy, caching, throttling: options/http.md
+      - Errors: options/errors.md
+      - Middleware, health, rendering: options/middleware.md
+      - API keys, audit, webhooks, uploads: options/contrib.md
+      - Settings: options/settings.md
+      - Testing: options/testing.md
+      - Commands and checks: options/commands.md
+      - API reference: reference.md
+  - Project:
+      - Scope and design: project/scope.md
+      - Comparison: project/comparison.md
+      - Performance: project/performance.md
+      - Support and stability: project/support.md
+      - Security policy: project/security.md
+      - Code of Conduct: project/code-of-conduct.md
+      - Release runbook: project/releasing.md
+      - Contributing: project/contributing.md
+      - Changelog: project/changelog.md
+      - Review integration: migration/review-integration.md
+      - Migrating from Django REST framework: migration/drf.md
+      - Migrating from Django Ninja: migration/ninja.md
+      - Migrating from django-ninja-extra: migration/ninja-extra.md

@@ -1,0 +1,53 @@
+# Disposable test services. No host ports or existing project volumes are used.
+services:
+  postgres:
+    image: postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    environment:
+      POSTGRES_USER: devx
+      POSTGRES_PASSWORD: devx-test-only
+      POSTGRES_DB: devx
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devx -d devx"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  s3:
+    build:
+      context: .
+      dockerfile: docker/minio.Dockerfile
+    environment:
+      MINIO_ROOT_USER: devx-test
+      MINIO_ROOT_PASSWORD: devx-test-only-secret
+      MINIO_BROWSER: "off"
+      MINIO_UPDATE: "off"
+    tmpfs:
+      - /tmp:mode=1777
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/minio/health/live', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  tests:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      s3: {condition: service_healthy}
+    environment:
+      TEST_DATABASE_URL: postgresql://devx:devx-test-only@postgres:5432/devx
+      TEST_REDIS_URL: redis://redis:6379/0
+      TEST_S3_ENDPOINT_URL: http://s3:9000
+      TEST_S3_ACCESS_KEY: devx-test
+      TEST_S3_SECRET_KEY: devx-test-only-secret

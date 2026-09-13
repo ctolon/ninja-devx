@@ -1,0 +1,6 @@
+{
+  "controller sync (request scope + DI)": {"max_overhead_ratio": 1.5, "max_hops": 0},
+  "controller async (request scope + DI)": {"max_overhead_ratio": 1.6, "max_hops": 0},
+  "controller ReadOnlyModelController list": {"max_overhead_ratio": 1.6, "max_hops": 0},
+  "controller AsyncReadOnlyModelController list": {"max_overhead_ratio": 1.8, "max_hops": 1}
+}

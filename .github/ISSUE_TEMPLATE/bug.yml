@@ -1,0 +1,24 @@
+name: Bug report
+description: Reproducible behavior that differs from the documented contract.
+body:
+  - type: markdown
+    attributes:
+      value: For vulnerabilities, use private reporting linked in SECURITY.md. Remove credentials and personal data.
+  - type: textarea
+    id: versions
+    attributes:
+      label: Environment
+      description: Python, Django, django-ninja, ninja-devx, database and relevant extras.
+    validations: {required: true}
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Controller/schema/settings and the request or failing test.
+    validations: {required: true}
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+      description: Include status/body/headers and sanitized traceback where relevant.
+    validations: {required: true}

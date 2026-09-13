@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with: {version: '0.11.6', python-version: '3.13'}
+      - run: uv sync --locked --group docs --group verification
+      - run: uv run --no-sync ruff check .
+      - run: uv run --no-sync ruff format --check .
+      - run: uv run --no-sync mypy
+      - run: uv run --no-sync pyright --pythonpath .venv/bin/python
+      - run: uv run --no-sync python tools/messages.py --check
+      - run: uv run --no-sync python tools/generate_docs.py --check
+      - run: >-
+          uv run --no-sync python -m ninja_devx.unasync
+          src/ninja_devx/_permission_eval_async.py:src/ninja_devx/_permission_eval.py
+          --replace adenied=denied --replace aleaf_allows=leaf_allows --check
+      - run: uv run --no-sync mkdocs build --strict
+      - run: uv run --no-sync python tools/check_docs_links.py site
+
+  compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13', '3.14']
+        django: ['4.2.*', '5.2.*', '6.0.*', '6.1.*']
+        exclude:
+          - {python: '3.11', django: '6.0.*'}
+          - {python: '3.11', django: '6.1.*'}
+          - {python: '3.13', django: '4.2.*'}
+          - {python: '3.14', django: '4.2.*'}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with: {version: '0.11.6', python-version: '${{ matrix.python }}'}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: {node-version: '22'}
+      - run: npm install --global typescript@5.9.3
+      - name: Test the selected framework version
+        env:
+          DJANGO_VERSION: ${{ matrix.django }}
+        run: uv run --locked --isolated --with "django==$DJANGO_VERSION" pytest -q
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - run: docker compose -p devx-ci build
+      - run: docker compose -p devx-ci up -d --wait postgres redis s3
+      - name: Full suite with PostgreSQL, Redis and S3
+        run: docker compose -p devx-ci run --name devx-ci-tests --no-deps tests
+      - name: Save coverage
+        if: always()
+        run: docker cp devx-ci-tests:/tmp/devx-validation ./artifacts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: coverage
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Stop only this job's services
+        if: always()
+        run: docker compose -p devx-ci down --volumes --remove-orphans
+
+  examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - {dir: quickstart, modules: 'config notes'}
+          - {dir: blog, modules: 'blog config clients/blog_client.py'}
+          - {dir: recipes, modules: 'config shop hacksoft cosmic interactors'}
+          - {dir: saas, modules: 'config tracker'}
+          - {dir: async_api, modules: 'config orders'}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with: {version: '0.11.6', python-version: '3.13'}
+      - run: uv sync --locked
+      - name: Test, type-check and inspect migrations
+        working-directory: examples/${{ matrix.example.dir }}
+        env:
+          EXAMPLE_MODULES: ${{ matrix.example.modules }}
+        run: |
+          uv run --no-sync --project ../.. pytest -q
+          uv run --no-sync --project ../.. mypy $EXAMPLE_MODULES
+          uv run --no-sync --project ../.. python manage.py makemigrations --check --dry-run
+          uv run --no-sync --project ../.. python manage.py check --fail-level WARNING
+          uv run --no-sync --project ../.. python manage.py devx_scaffold --check
+
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with: {version: '0.11.6', python-version: '3.13'}
+      - run: uv sync --locked --group docs --group verification
+      - run: uv build
+      - run: uv run --no-sync twine check --strict dist/*
+      - run: uv run --no-sync python tools/verify_package.py dist/*.whl --report extras.json
+      - run: uv run --no-sync python tools/verify_sdist.py dist/*.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-checks
+          path: extras.json
+          retention-days: 14
+
+  dependency-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with: {version: '0.11.6', python-version: '3.13'}
+      - run: uv sync --locked --group verification
+      - run: uv export --locked --all-extras --no-dev --no-emit-project --format requirements-txt --output-file audit-requirements.txt
+      - run: uv run --no-sync pip-audit --requirement audit-requirements.txt --format json --output audit.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with: {name: dependency-audit, path: audit.json, retention-days: 14}

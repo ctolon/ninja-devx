@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Example sign in</title></head>
+<body>
+<main>
+<h1>Sign in to the local example</h1>
+<p>Use the account created with <code>manage.py createsuperuser</code>.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="hidden" name="next" value="{{ next }}">
+  <button type="submit">Sign in</button>
+</form>
+</main>
+</body>
+</html>

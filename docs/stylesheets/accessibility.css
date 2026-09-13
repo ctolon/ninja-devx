@@ -1,0 +1,54 @@
+/* Keep the teal identity while meeting AA contrast for normal-sized text. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #00796b;
+  --md-primary-fg-color--dark: #00695c;
+  --md-accent-fg-color: #b53d00;
+  --md-code-hl-comment-color: #626262;
+  --md-code-hl-operator-color: #626262;
+}
+
+.md-copyright {
+  color: #bdbdbd;
+}
+
+/* Inactive tabs remain distinguishable by the active underline/weight. */
+.md-tabs__link {
+  opacity: 1;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #80cbc4;
+  --md-accent-fg-color: #ffab91;
+  --md-code-hl-comment-color: #b0b0b0;
+}
+
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: #00695c;
+}
+
+.md-typeset p a,
+.md-typeset li a,
+.md-typeset dd a,
+.md-typeset td a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-code-hl-number-color: #f08073;
+  --md-code-hl-constant-color: #b09aef;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  color: #1e2129;
+}
+
+[data-md-color-scheme="default"] {
+  --md-code-hl-variable-color: #626262;
+}
+
+.md-typeset__scrollwrap:focus-visible {
+  outline: 2px solid var(--md-typeset-a-color);
+  outline-offset: 2px;
+}

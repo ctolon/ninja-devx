@@ -1,0 +1,7 @@
+# Review ownership; enable required code-owner review in repository rulesets.
+* @ctolon
+/.github/ @ctolon
+/SECURITY.md @ctolon
+/CODE_OF_CONDUCT.md @ctolon
+/pyproject.toml @ctolon
+/uv.lock @ctolon

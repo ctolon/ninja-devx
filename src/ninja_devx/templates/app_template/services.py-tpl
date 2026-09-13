@@ -1,0 +1,6 @@
+"""Business rules of {{ app_name }}: no HTTP here, so they are easy to test and reuse."""
+
+
+class {{ camel_case_app_name }}Service:
+    def status(self) -> str:
+        return "ok"

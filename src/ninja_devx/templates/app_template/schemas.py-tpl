@@ -1,0 +1,6 @@
+from ninja import Schema
+
+
+class StatusOut(Schema):
+    app: str
+    status: str

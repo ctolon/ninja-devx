@@ -1,0 +1,9 @@
+extend = "../../pyproject.toml"
+
+[lint]
+# Pydantic schema defaults and Django migration/class attributes are not shared mutable state.
+extend-ignore = ["RUF012"]
+
+[lint.isort]
+known-first-party = ["config", "tracker"]
+known-third-party = ["ninja_devx"]

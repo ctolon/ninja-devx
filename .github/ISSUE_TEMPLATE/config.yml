@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability privately
+    url: https://github.com/ctolon/ninja-devx/security/advisories/new
+    about: Do not publish exploit details in a public issue.

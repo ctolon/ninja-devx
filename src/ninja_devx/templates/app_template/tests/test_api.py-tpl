@@ -1,0 +1,13 @@
+from ninja.testing import TestClient
+from ninja_devx import Container
+
+from {{ app_name }}.api import {{ camel_case_app_name }}Controller
+
+
+def test_status() -> None:
+    client = TestClient({{ camel_case_app_name }}Controller.as_router(container=Container()))
+
+    response = client.get("/status")
+
+    assert response.status_code == 200
+    assert response.json() == {"app": "{{ app_name }}", "status": "ok"}
