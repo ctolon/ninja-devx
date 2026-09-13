@@ -27,18 +27,18 @@ ENV/
 .envrc
 
 # Build and distribution outputs
-build/
-dist/
-wheelhouse/
+/build/
+/dist/
+/wheelhouse/
 *.whl
 *.tar.gz
 *.zip
 
 # Documentation and generated reports
-site/
-artifacts/
-reports/
-release-evidence/
+/site/
+/artifacts/
+/reports/
+/release-evidence/
 benchmarks/results*.json
 *.log
 *.out
@@ -49,9 +49,9 @@ benchmarks/results*.json
 *.sqlite3-journal
 *.sqlite3-shm
 *.sqlite3-wal
-media/
-uploads/
-tmp/
+/media/
+/uploads/
+/tmp/
 
 # Environment files and local secrets
 .env
