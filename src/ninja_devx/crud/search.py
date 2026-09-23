@@ -61,10 +61,10 @@ class PostgresSearch:
     def search(
         self, queryset: QuerySet[ModelT], term: str, fields: Sequence[str], /
     ) -> QuerySet[ModelT]:
-        from django.contrib.postgres.search import SearchQuery, SearchVector
-
         if not fields:
             return queryset
+        from django.contrib.postgres.search import SearchQuery, SearchVector
+
         vector = SearchVector(*fields, config=self.config)
         return queryset.annotate(_ndx_search=vector).filter(
             _ndx_search=SearchQuery(term, config=self.config)

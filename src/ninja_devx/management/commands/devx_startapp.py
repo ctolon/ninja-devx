@@ -6,6 +6,7 @@ from pathlib import Path
 from django.core.management.commands.startapp import Command as StartAppCommand
 
 import ninja_devx
+from ninja_devx.tooling.startproject import target_directory
 
 TEMPLATE = Path(ninja_devx.__file__).parent / "templates" / "app_template"
 
@@ -21,7 +22,12 @@ class Command(StartAppCommand):
         parser.set_defaults(template=str(TEMPLATE))
 
     def handle(self, **options: object) -> None:  # type: ignore[override]  # same as startapp
-        super().handle(**options)
+        directory = options.get("directory")
+        if directory:
+            with target_directory(Path(str(directory)).expanduser().resolve()):
+                super().handle(**options)
+        else:
+            super().handle(**options)
         name = str(options["name"])
         camel = "".join(part.capitalize() for part in name.split("_"))
         self.stdout.write(

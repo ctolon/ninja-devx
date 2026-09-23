@@ -106,6 +106,15 @@ def test_generating_into_an_existing_empty_directory_is_allowed(tmp_path):
     assert (target / "manage.py").exists()
 
 
+def test_an_invalid_name_leaves_no_directory_behind(tmp_path):
+    target = tmp_path / "acme"
+
+    with pytest.raises(CommandError):
+        call_command("devx_startproject", "not-an-identifier", str(target))
+
+    assert not target.exists()
+
+
 def test_no_docker_drops_the_compose_file_and_readme_section(tmp_path):
     target = tmp_path / "acme"
     call_command("devx_startproject", "acme", str(target), no_docker=True)

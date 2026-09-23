@@ -71,9 +71,9 @@ Create a Django app laid out for ninja-devx: a controller, schemas, a service an
 
 | Argument | Type | Default | Description |
 |---|---|---|---|
-| `name` | value | — | Name of the application or project. |
-| `directory` | value | — | Optional destination directory. |
-| `--template` | value | the ninja-devx app template | Another template directory or archive. |
+| `name` | value | — | Name of the app. |
+| `directory` | value | — | Optional destination directory, created if needed. |
+| `--template` | value | the ninja-devx template | Another template directory or archive. |
 
 Every other option of Django's `startapp` (`--extension`, `--name`, `--exclude`) is accepted.
 
@@ -83,14 +83,13 @@ Create a runnable ninja-devx project: settings wired with request id, security h
 
 | Argument | Type | Default | Description |
 |---|---|---|---|
-| `name` | value | — | Name of the application or project. |
-| `directory` | value | — | Optional destination directory, this will be created if needed. |
-| `--template` | value | `the ninja-devx app template` | The path or URL to load the template from. |
-| `--extension, -e` | value | `['py', 'toml', 'md', 'yaml', 'gitignore', 'env.example']` | The file extension(s) to render (default: "py"). Separate multiple extensions with commas, or use -e multiple times. |
-| `--name, -n` | value | `[]` | The file name(s) to render. Separate multiple file names with commas, or use -n multiple times. |
-| `--exclude, -x` | value | — | The directory name(s) to exclude, in addition to .git and __pycache__. Can be used multiple times. |
+| `name` | value | — | Name of the project. |
+| `directory` | value | — | Optional destination directory, created if needed. |
+| `--template` | value | the ninja-devx template | Another template directory or archive. |
 | `--no-docker` | flag | — | skip compose.yaml (no local Postgres) |
 | `--app` | value | — | also scaffold a first app with devx_startapp |
+
+Every other option of Django's `startproject` (`--extension`, `--name`, `--exclude`) is accepted.
 
 ### `manage.py devx_apikey`
 

@@ -69,8 +69,7 @@ def test_search_backends_without_fields_return_the_queryset(db):
 
 
 def test_postgres_search_annotates_and_filters(monkeypatch, db):
-    import django.contrib.postgres.search as search
-
+    search = pytest.importorskip("django.contrib.postgres.search")  # needs psycopg on 6.0+
     monkeypatch.setattr(search, "SearchVector", lambda *fields, **options: Value(""))
     monkeypatch.setattr(search, "SearchQuery", lambda *args, **options: Value(""))
     built = PostgresSearch(config="simple").search(Article.objects.all(), "x", ("title",))

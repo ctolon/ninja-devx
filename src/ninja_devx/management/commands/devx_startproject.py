@@ -8,7 +8,12 @@ from django.core.management.base import CommandError
 from django.core.management.commands.startproject import Command as StartProjectCommand
 
 import ninja_devx
-from ninja_devx.tooling.startproject import camel_case, drop_docker, wire_app
+from ninja_devx.tooling.startproject import (
+    camel_case,
+    drop_docker,
+    target_directory,
+    wire_app,
+)
 
 TEMPLATE = Path(ninja_devx.__file__).parent / "templates" / "project"
 
@@ -45,7 +50,8 @@ class Command(StartProjectCommand):
 
         options["directory"] = str(top_dir)
         options["ninja_devx_version"] = ninja_devx.__version__
-        super().handle(**options)
+        with target_directory(top_dir):
+            super().handle(**options)
 
         if no_docker:
             drop_docker(top_dir)

@@ -10,9 +10,13 @@ Plain string edits over the rendered project, not a second templating pass::
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
-__all__ = ["camel_case", "drop_docker", "wire_app"]
+from django.core.management.base import CommandError
+
+__all__ = ["camel_case", "drop_docker", "target_directory", "wire_app"]
 
 INSTALLED_APPS_ANCHOR = '"ninja_devx",  # controllers, CRUD, permissions and DI'
 IMPORT_ANCHOR = "from ninja_devx.plugins import APIPlugin, install"
@@ -72,3 +76,20 @@ def drop_docker(directory: Path) -> None:
     heading_at = readme_source.find(DOCKER_SECTION_HEADING)
     if heading_at != -1:
         readme_path.write_text(readme_source[:heading_at].rstrip() + "\n")
+
+
+@contextmanager
+def target_directory(directory: Path) -> Generator[None]:
+    """Create ``directory`` for Django's ``startproject``/``startapp``, which only create a
+    missing destination themselves from Django 6.0.
+
+    The directory is removed again if the command fails before writing into it.
+    """
+    created = not directory.exists()
+    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        yield
+    except CommandError:
+        if created and not any(directory.iterdir()):
+            directory.rmdir()
+        raise

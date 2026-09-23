@@ -493,27 +493,41 @@ def management_command(name: str, app: str = "ninja_devx") -> Callable[[], str]:
     return build
 
 
-def startapp_command() -> str:
-    # Django's startapp options (and their help texts) differ between Django versions.
-    from django.core.management import load_command_class
+def template_command(name: str, django_name: str) -> Callable[[], str]:
+    # Django's startapp/startproject options (and their help texts) differ between Django
+    # versions, so only the options ninja-devx adds are read from the parser.
+    def build() -> str:
+        from django.core.management import load_command_class
 
-    command = load_command_class("ninja_devx", "devx_startapp")
-    return "\n".join(
-        [
-            "### `manage.py devx_startapp`",
+        command = load_command_class("ninja_devx", name)
+        base = load_command_class("django.core", django_name).create_parser("manage.py", name)
+        inherited = {action.dest for action in base._actions}
+        lines = [
+            f"### `manage.py {name}`",
             "",
             _rst(command.help),
             "",
             "| Argument | Type | Default | Description |",
             "|---|---|---|---|",
-            "| `name` | value | — | Name of the application or project. |",
-            "| `directory` | value | — | Optional destination directory. |",
-            "| `--template` | value | the ninja-devx app template | Another template directory or archive. |",
+            f"| `name` | value | — | Name of the {django_name.removeprefix('start')}. |",
+            "| `directory` | value | — | Optional destination directory, created if needed. |",
+            "| `--template` | value | the ninja-devx template | Another template directory or archive. |",
+        ]
+        for action in command.create_parser("manage.py", name)._actions:
+            if action.dest in inherited:
+                continue
+            kind = "flag" if isinstance(action, argparse._StoreTrueAction) else "value"
+            label = ", ".join(action.option_strings)
+            lines.append(f"| `{label}` | {kind} | — | {_cell(action.help or '')} |")
+        lines += [
             "",
-            "Every other option of Django's `startapp` (`--extension`, `--name`, `--exclude`) is accepted.",
+            f"Every other option of Django's `{django_name}` (`--extension`, `--name`, "
+            "`--exclude`) is accepted.",
             "",
         ]
-    )
+        return "\n".join(lines)
+
+    return build
 
 
 def unasync_cli() -> str:
@@ -1167,8 +1181,8 @@ def pages() -> list[Page]:
                 Runtime(management_command("devx_inspect")),
                 Runtime(management_command("devx_doctor")),
                 Runtime(management_command("devx_uploads")),
-                Runtime(startapp_command),
-                Runtime(management_command("devx_startproject")),
+                Runtime(template_command("devx_startapp", "startapp")),
+                Runtime(template_command("devx_startproject", "startproject")),
                 Runtime(management_command("devx_apikey", "ninja_devx.contrib.apikeys")),
                 Runtime(management_command("devx_webhooks", "ninja_devx.contrib.webhooks")),
                 Runtime(management_command("devx_jobs", "ninja_devx.contrib.jobs")),
