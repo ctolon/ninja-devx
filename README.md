@@ -5,7 +5,7 @@ ninja-devx adds typed controllers and reusable resource policies to
 ownership, tenant scoping, transaction, dependency-lifetime and error-handling rules
 across several endpoints. Services, repositories and contrib modules are optional.
 
-Version **0.0.2** is the current alpha (0.0.1 was the first published release). See the
+Version **0.0.3** is the current alpha (0.0.1 was the first published release). See the
 [scope and design rationale](https://github.com/ctolon/ninja-devx/blob/main/docs/project/scope.md),
 [comparison](https://github.com/ctolon/ninja-devx/blob/main/docs/project/comparison.md) and
 [support policy](https://github.com/ctolon/ninja-devx/blob/main/docs/project/support.md) before adopting it.

@@ -282,7 +282,7 @@ __all__ = [
 try:
     __version__ = version("ninja-devx")
 except PackageNotFoundError:  # pragma: no cover - running from a source tree
-    __version__ = "0.0.2"
+    __version__ = "0.0.3"
 
 
 def __getattr__(name: str) -> object:

@@ -4,7 +4,10 @@ All notable changes to this project are documented here. ninja-devx follows
 [semantic versioning](https://semver.org); see the support and stability page for what
 that means before 1.0.
 
-## Unreleased
+## 0.0.3
+
+Third alpha. Adds django-filter and django-rules integrations, HTTP `QUERY`
+operations and Django 5.2+ model field support. APIs may still change before 1.0.
 
 ### Added
 

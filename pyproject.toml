@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ninja-devx"
-version = "0.0.2"
+version = "0.0.3"
 description = "Developer productivity toolkit for Django Ninja: typed controllers, CRUD, permissions, layers, DI and tooling"
 readme = "README.md"
 requires-python = ">=3.11"

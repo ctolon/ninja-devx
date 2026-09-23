@@ -18,7 +18,7 @@ combination was exercised in a given run.
 
 ## Versioning
 
-**0.0.2** is the current alpha release and APIs may change between minor releases before
+**0.0.3** is the current alpha release and APIs may change between minor releases before
 1.0. The following policy applies to published releases.
 
 ninja-devx follows [semantic versioning](https://semver.org). Before 1.0, a minor release

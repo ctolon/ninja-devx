@@ -98,12 +98,12 @@ covers the interpreter/framework/backend versions actually exercised.
   migration guides, declared support and generated clients after the final code changes.
 - Run the full gates on the candidate commit. Retain coverage, backend, package and audit
   evidence. Test an upgrade with representative application data before promising it.
-- Run `python tools/check_release.py refs/tags/v0.0.2` locally. It rejects branch refs,
+- Run `python tools/check_release.py refs/tags/v0.0.3` locally. It rejects branch refs,
   mismatched versions, missing/duplicate notes and unresolved note placeholders.
 
 ## Publication sequence
 
-An authorized maintainer creates and pushes the immutable `v0.0.2` tag after reviewing the
+An authorized maintainer creates and pushes the immutable `v0.0.3` tag after reviewing the
 candidate. The release workflow validates the tag, calls the complete CI workflow and
 uses the **same distribution artifact** produced by its package job. It does not rebuild
 between validation and publication.
