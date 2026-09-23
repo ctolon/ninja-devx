@@ -45,6 +45,7 @@ Filtering, search, ordering, pagination and selectors for list endpoints.
 | `search_backend` | `SearchBackend[Model] \| None` | `None` | Replace the default `icontains` search (for example `PostgresSearch()`). |
 | `search_param` | `str` | `'search'` | Name of the search query parameter. |
 | `filter_fields` | `FilterFields` | `MappingProxyType({})` | Generated typed filters: `{"status": ("exact",), "created": ("gte", "lte")}`. |
+| `filterset_class` | `type[FilterSetLike] \| None` | `None` | A django-filter `FilterSet` whose filters become query parameters of `GET /` (`pip install ninja-devx[filters]`); it runs with the request. |
 | `ordering_fields` | `Sequence[str]` | `()` | Fields the client may order by (`?ordering=-created`), validated as an enum. |
 | `ordering_param` | `str` | `'ordering'` | Name of the ordering query parameter. |
 | `default_ordering` | `Sequence[str]` | `()` | Ordering when the client sends none; must be among `ordering_fields`. |

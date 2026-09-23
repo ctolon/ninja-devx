@@ -176,16 +176,22 @@ def test_redis_throttle_storage_is_atomic_across_threads():
     import uuid
     from concurrent.futures import ThreadPoolExecutor
 
+    import redis
+
     from ninja_devx.contrib.redis_throttle import RedisThrottleStorage
 
-    storage = RedisThrottleStorage(url=os.environ["TEST_REDIS_URL"])
+    client = redis.Redis.from_url(os.environ["TEST_REDIS_URL"])
+    storage = RedisThrottleStorage(client=client)
     key = f"ninja-devx-test:{uuid.uuid4().hex}"
 
     def hit(_: int) -> int:
         count, _retry_after = storage.hit(key, 60)
         return count
 
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        counts = list(pool.map(hit, range(100)))
+    try:
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            counts = list(pool.map(hit, range(100)))
+    finally:
+        client.close()
 
     assert sorted(counts) == list(range(1, 101))

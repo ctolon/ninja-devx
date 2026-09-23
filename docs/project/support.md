@@ -41,8 +41,11 @@ binding at 1.0:
 
 Before 1.0, deprecations follow the same steps whenever a replacement exists.
 
-1. A feature is deprecated in a minor release. Using it emits `DeprecationWarning`
-   naming the replacement, and the changelog lists it under "Deprecated".
+1. A feature is deprecated in a minor release. Using it emits
+   `ninja_devx.NinjaDevXDeprecationWarning` (a `DeprecationWarning`) naming the
+   replacement, and the changelog lists it under "Deprecated". Add
+   `"error::ninja_devx.NinjaDevXDeprecationWarning"` to pytest's `filterwarnings` to find
+   every use before upgrading.
 2. It is removed in the next minor release at the earliest, and never within a patch
    release.
 3. Removals are listed under "Removed" with a migration note.

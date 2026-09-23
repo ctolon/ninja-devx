@@ -718,6 +718,19 @@ wheels = [
 ]
 
 [[package]]
+name = "django-filter"
+version = "26.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django", version = "5.2.17", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "django", version = "6.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cb/3e/563965173d4cbb5fc308087e7b3d11a115b7b67273d093622480b1e31f78/django_filter-26.1.tar.gz", hash = "sha256:66ea04031b068c77c86e1ac26ced7a3f8f13ce797f5795751707e3deefc58054", size = 144299, upload-time = "2026-07-11T09:27:02.767Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1f/01/afffed1e3c4540fb75bf550a18b6176a9f6371b5f3e52b69a28995b6480c/django_filter-26.1-py3-none-any.whl", hash = "sha256:7d98ef2899218e6242619b532cb1b95af14e09dfcf74844aecb550ad27b59ff2", size = 94069, upload-time = "2026-07-11T09:27:01.012Z" },
+]
+
+[[package]]
 name = "django-guardian"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1833,6 +1846,9 @@ crypto = [
 dishka = [
     { name = "dishka" },
 ]
+filters = [
+    { name = "django-filter" },
+]
 guardian = [
     { name = "django-guardian" },
 ]
@@ -1847,6 +1863,9 @@ otel = [
 ]
 redis = [
     { name = "redis" },
+]
+rules = [
+    { name = "rules" },
 ]
 s3 = [
     { name = "boto3" },
@@ -1870,6 +1889,7 @@ bench = [
 dev = [
     { name = "cryptography" },
     { name = "dishka" },
+    { name = "django-filter" },
     { name = "django-guardian" },
     { name = "django-stubs" },
     { name = "django-zeal" },
@@ -1885,6 +1905,7 @@ dev = [
     { name = "pytest-django" },
     { name = "redis" },
     { name = "ruff" },
+    { name = "rules" },
     { name = "schemathesis" },
     { name = "structlog" },
     { name = "svcs" },
@@ -1909,6 +1930,7 @@ requires-dist = [
     { name = "cryptography", marker = "extra == 'crypto'", specifier = ">=42" },
     { name = "dishka", marker = "extra == 'dishka'", specifier = ">=1.4" },
     { name = "django", specifier = ">=4.2" },
+    { name = "django-filter", marker = "extra == 'filters'", specifier = ">=24" },
     { name = "django-guardian", marker = "extra == 'guardian'", specifier = ">=2.4" },
     { name = "django-ninja", specifier = ">=1.7,<2" },
     { name = "django-zeal", marker = "extra == 'zeal'", specifier = ">=2" },
@@ -1917,11 +1939,12 @@ requires-dist = [
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "orjson", marker = "extra == 'orjson'", specifier = ">=3.9" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5" },
+    { name = "rules", marker = "extra == 'rules'", specifier = ">=3.3" },
     { name = "schemathesis", marker = "extra == 'contract'", specifier = ">=4" },
     { name = "structlog", marker = "extra == 'structlog'", specifier = ">=24" },
     { name = "svcs", marker = "extra == 'svcs'", specifier = ">=24.1" },
 ]
-provides-extras = ["dishka", "svcs", "otel", "client", "contract", "guardian", "orjson", "msgspec", "s3", "crypto", "redis", "structlog", "zeal"]
+provides-extras = ["dishka", "svcs", "otel", "client", "contract", "guardian", "orjson", "msgspec", "s3", "crypto", "redis", "structlog", "zeal", "filters", "rules"]
 
 [package.metadata.requires-dev]
 bench = [
@@ -1932,6 +1955,7 @@ bench = [
 dev = [
     { name = "cryptography", specifier = ">=42" },
     { name = "dishka", specifier = ">=1.4" },
+    { name = "django-filter", specifier = ">=24" },
     { name = "django-guardian", specifier = ">=2.4" },
     { name = "django-stubs", specifier = ">=5.1" },
     { name = "django-zeal", specifier = ">=2" },
@@ -1947,6 +1971,7 @@ dev = [
     { name = "pytest-django", specifier = ">=4.9" },
     { name = "redis", specifier = ">=5" },
     { name = "ruff", specifier = ">=0.8" },
+    { name = "rules", specifier = ">=3.3" },
     { name = "schemathesis", specifier = ">=4" },
     { name = "structlog", specifier = ">=24" },
     { name = "svcs", specifier = ">=24.1" },
@@ -2681,6 +2706,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5f/ea/7f9b938a63ece4bec677ad7f9f7fa02df3383db1949ed93a382441c09a87/ruff-0.16.7-py3-none-win32.whl", hash = "sha256:2ea3470fcebcbc5df2fb0c6f3b90333fa9084c534e0111c038fa4a6ab9f1c4b7", size = 10059082, upload-time = "2026-09-10T18:03:59.632Z" },
     { url = "https://files.pythonhosted.org/packages/39/11/480a6973a927aa653e1cead6a6416008640e03a99d05b34c0434b8c6c366/ruff-0.16.7-py3-none-win_amd64.whl", hash = "sha256:7ac26aca826e9e21d0f1cb25b54ac660760a9fdd094d3e4df9848232be98cfc6", size = 10593368, upload-time = "2026-09-10T18:04:01.999Z" },
     { url = "https://files.pythonhosted.org/packages/8b/4b/51327018d056f0dad2c2238f26d1fb0f53707a9d91b75dea6d1b3039f136/ruff-0.16.7-py3-none-win_arm64.whl", hash = "sha256:aab7f39e2c9df6c596216070f98eef1207b94f8516cca20c808826974971855b", size = 10412401, upload-time = "2026-09-10T18:04:04.098Z" },
+]
+
+[[package]]
+name = "rules"
+version = "3.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f7/36/918cf4cc9fd0e38bb9310b2d1a13ae6ebb2b5732d56e7de6feb4a992a6ed/rules-3.5.tar.gz", hash = "sha256:f01336218f4561bab95f53672d22418b4168baea271423d50d9e8490d64cb27a", size = 55504, upload-time = "2024-09-02T16:01:46.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/33/16213dd62ca8ce8749985318a966ac1300ab55c977b2d66632a45b405c99/rules-3.5-py2.py3-none-any.whl", hash = "sha256:0f00fc9ee448b3f82e9aff9334ab0c56c76dce4dfa14f1598f57969f1022acc0", size = 25658, upload-time = "2024-09-02T16:01:44.844Z" },
 ]
 
 [[package]]

@@ -21,6 +21,7 @@ from ninja_devx import (
     IsStaff,
     get,
     post,
+    query,
 )
 from ninja_devx.security.permissions import AllOf, AnyOf, Not
 
@@ -105,6 +106,8 @@ def test_is_authenticated_or_read_only():
     assert client.get("/").status_code == 200
     client = client_for(IsAuthenticatedOrReadOnly(), method=post)
     assert client.post("/").status_code == 401
+    client = client_for(IsAuthenticatedOrReadOnly(), method=query)
+    assert client.request("QUERY", "/").status_code == 200
 
 
 @pytest.mark.django_db

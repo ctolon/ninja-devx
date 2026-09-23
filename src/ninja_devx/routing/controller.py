@@ -10,6 +10,7 @@ from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     ClassVar,
+    Final,
     Literal,
     ParamSpec,
     TypedDict,
@@ -178,6 +179,7 @@ class Controller:
         :param scope: Overrides the class's ``scope`` for this router.
         :param options: ``ControllerOptions`` over the class's ``options``.
         """
+        _reject_option_attributes(cls)
         operations = _collect_operations(cls)
         if not operations:
             raise ControllerConfigError(
@@ -418,6 +420,25 @@ def _collect_operations(cls: type[Controller]) -> list[tuple[str, MethodFunction
             )
         operations.append((name, member))
     return operations
+
+
+_OPTION_NAMES: Final = ControllerOptions.__required_keys__ | ControllerOptions.__optional_keys__
+
+
+def _reject_option_attributes(cls: type[Controller]) -> None:
+    """``permissions = [...]`` on the class is not an option and would be ignored silently."""
+    for klass in cls.__mro__:
+        if klass is Controller:
+            return
+        for name, value in vars(klass).items():
+            if name not in _OPTION_NAMES or callable(value):
+                continue
+            if isinstance(value, property | classmethod | staticmethod):
+                continue
+            raise ControllerConfigError(
+                f"{klass.__qualname__}.{name} is a controller option, which a class attribute "
+                f"does not set; write options = ControllerOptions({name}=...)"
+            )
 
 
 def _warn_mixed_paths(cls: type[Controller], registrations: Sequence[Registration]) -> None:

@@ -1094,6 +1094,15 @@ def pages() -> list[Page]:
                 Signature("ninja_devx.contrib.nplusone:explain_n_plus_one"),
                 Signature("ninja_devx.contrib.nplusone:zeal_installed"),
                 Signature("ninja_devx.contrib.nplusone:zeal_strict"),
+                Text("## django-rules (`ninja_devx.contrib.rules`)"),
+                Text(
+                    """
+                    Rules from [django-rules](https://github.com/dfunckt/django-rules) (the
+                    `rules` extra) as permissions, checked on the request and on loaded
+                    objects (see [Permissions](../guide/permissions.md#django-rules)).
+                    """
+                ),
+                Classes("Rule permissions", ["ninja_devx.contrib.rules:HasRule"]),
                 Text("## Task queue adapters (`ninja_devx.contrib.tasks`)"),
                 Classes(
                     "Task queues",

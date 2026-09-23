@@ -72,3 +72,4 @@ Base class for business errors: 400 unless a subclass says otherwise.
 | `BlockingCallWarning` | `RuntimeWarning` | Sync code blocked an async operation's event loop (see NINJA_DEVX["WARN_BLOCKING_MS"]). |
 | `AsyncDatabaseTestWarning` | `UserWarning` | An async test uses the database without `django_db(transaction=True)`. |
 | `MixedPathWarning` | `UserWarning` | One path is served by both sync and async operations (costs a thread hop per call). |
+| `NinjaDevXDeprecationWarning` | `DeprecationWarning` | A ninja-devx API scheduled for removal; the message names the replacement. |

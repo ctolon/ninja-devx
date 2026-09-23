@@ -71,6 +71,7 @@ DEFAULT_PERMS_MAP: Final[Mapping[str, Sequence[str]]] = MappingProxyType(
     {
         "GET": ("%(app_label)s.view_%(model_name)s",),
         "HEAD": ("%(app_label)s.view_%(model_name)s",),
+        "QUERY": ("%(app_label)s.view_%(model_name)s",),
         "OPTIONS": (),
         "POST": ("%(app_label)s.add_%(model_name)s",),
         "PUT": ("%(app_label)s.change_%(model_name)s",),

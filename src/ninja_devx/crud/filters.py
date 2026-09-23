@@ -1,4 +1,4 @@
-"""Filter schemas generated from ``search_fields`` and ``filter_fields``."""
+"""Filter schemas generated from ``search_fields``, ``filter_fields`` and ``filterset_class``."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from .._internal.cache import owned_cache
 from ..exceptions import ControllerConfigError
 from ..serialization.pydantic import build_schema
 from .fields import field_type, resolve_field
+from .filtersets import FilterSetLike, filterset_parameters
 
 __all__ = ["EmptyFilters", "FilterFields", "filter_schema_for"]
 
@@ -83,14 +84,19 @@ def _build(controller: type[object]) -> type[FilterSchema]:
     explicit: type[FilterSchema] | None = getattr(controller, "filter_schema", None)
     search_fields: Sequence[str] = getattr(controller, "search_fields", ())
     filter_fields: FilterFields = getattr(controller, "filter_fields", {})
+    filterset_class: type[FilterSetLike] | None = getattr(controller, "filterset_class", None)
     if explicit is not None:
-        if search_fields or filter_fields:
+        if search_fields or filter_fields or filterset_class:
             raise ControllerConfigError(
                 f"{controller.__qualname__}: use either filter_schema or "
-                "search_fields/filter_fields, not both"
+                "search_fields/filter_fields/filterset_class, not both"
             )
         return explicit
-    if not search_fields and not filter_fields:
+    if filterset_class is not None and filter_fields:
+        raise ControllerConfigError(
+            f"{controller.__qualname__}: use either filterset_class or filter_fields, not both"
+        )
+    if not search_fields and not filter_fields and filterset_class is None:
         return EmptyFilters
 
     get_model: Callable[[], type[Model]] = getattr(controller, "get_model")  # noqa: B009 - typed
@@ -124,7 +130,24 @@ def _build(controller: type[object]) -> type[FilterSchema]:
                 None,
             )
 
+    applied_elsewhere = [search_param] if backend_search else []
+    if filterset_class is not None:
+        meta: object = getattr(filterset_class, "_meta", None)
+        filterset_model: type[Model] | None = getattr(meta, "model", None)
+        if filterset_model is not None and not issubclass(model, filterset_model):
+            raise ControllerConfigError(
+                f"{controller.__qualname__}: {filterset_class.__qualname__} filters "
+                f"{filterset_model.__name__}, not {model.__name__}"
+            )
+        filterset_fields = filterset_parameters(filterset_class)
+        if clash := sorted(fields.keys() & filterset_fields.keys()):
+            raise ControllerConfigError(
+                f"{controller.__qualname__}: {filterset_class.__qualname__} redefines {clash}"
+            )
+        fields.update(filterset_fields)
+        applied_elsewhere += filterset_fields
+
     schema = build_schema(f"{controller.__name__}Filters", FilterSchema, fields)
-    if backend_search:
-        setattr(schema, f"filter_{search_param}", _applied_by_backend)
+    for name in applied_elsewhere:
+        setattr(schema, f"filter_{name}", _applied_by_backend)
     return schema

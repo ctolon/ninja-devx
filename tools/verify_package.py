@@ -67,6 +67,8 @@ modules = {
     "redis": ["redis", "ninja_devx.contrib.redis_throttle"],
     "structlog": ["structlog", "ninja_devx.http.requestlog"],
     "zeal": ["zeal", "ninja_devx.contrib.nplusone"],
+    "filters": ["django_filters", "ninja_devx.crud.filtersets"],
+    "rules": ["rules", "ninja_devx.contrib.rules"],
 }
 for extra in selected:
     for module in modules[extra]:

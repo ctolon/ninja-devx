@@ -24,7 +24,7 @@ __all__ = [
 
 Schema: TypeAlias = Mapping[str, object]
 Location = Literal["path", "query", "header", "cookie"]
-_METHODS = ("get", "post", "put", "patch", "delete", "head", "options")
+_METHODS = ("get", "post", "put", "patch", "delete", "head", "options", "query")
 
 
 @dataclass(frozen=True, slots=True)

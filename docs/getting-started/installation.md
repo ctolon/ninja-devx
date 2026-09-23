@@ -19,6 +19,8 @@ pip install ninja-devx
 | `ninja-devx[redis]` | `redis` | `ninja_devx.contrib.redis_throttle.RedisThrottleStorage` |
 | `ninja-devx[structlog]` | `structlog` | binding request identity to `structlog.contextvars` in `RequestLogMiddleware` |
 | `ninja-devx[zeal]` | `django-zeal` | runtime N+1 detection (`ninja_devx.contrib.nplusone`) |
+| `ninja-devx[filters]` | `django-filter` | `filterset_class` on list endpoints |
+| `ninja-devx[rules]` | `rules` | `ninja_devx.contrib.rules.HasRule` |
 
 Requirements: Python 3.11+, Django 4.2+ and django-ninja 1.7+. See
 [Support and stability](../project/support.md) for the tested matrix.

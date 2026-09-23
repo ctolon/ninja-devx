@@ -28,8 +28,8 @@ api.add_router("/users", UserController.as_router(container=container))
 
 ## Operations
 
-`@get`, `@post`, `@put`, `@patch`, `@delete` and `@api_operation(methods, path)` take all
-of `Router.api_operation`'s options. They also take these ninja-devx options:
+`@get`, `@post`, `@put`, `@patch`, `@delete`, `@query` and `@api_operation(methods, path)`
+take all of `Router.api_operation`'s options. They also take these ninja-devx options:
 
 | Option | Effect |
 |---|---|
@@ -50,6 +50,12 @@ of `Router.api_operation`'s options. They also take these ninja-devx options:
 - Extra parameters can be injected instead of parsed: `Inject[T]`, `Annotated[T, Resolve(fn)]`,
   `Instance[Model]` ([Dependency injection](dependency-injection.md)).
 - Stacking `@get("/a")` and `@get("/b")` exposes one method under both paths.
+- `@query` registers an HTTP `QUERY` operation: safe and idempotent like `GET`, but with a
+  request body, for searches too large or structured for a query string. Permissions treat
+  it as a read. It appears under OpenAPI 3.2's `query` key (tools that only know 3.1 may
+  ignore it), and the generated Python and TypeScript clients send it. Django itself does
+  not know the method yet: its CSRF middleware treats it as unsafe, and its test client has
+  no `query()`, so tests call `client.request("QUERY", "/", json=...)`.
 - Default `operation_id` is `<snake_case class>_<method>`.
 - Routes are registered static-segments-first: `/me` and `/bulk` always match before
   `/{pk}`, whatever the declaration order.

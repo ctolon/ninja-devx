@@ -568,6 +568,18 @@ def zeal_strict() -> Generator[None]: ...
 `zeal.zeal_context()` forced to raise, regardless of `settings.ZEAL_RAISE`.
 
 
+## django-rules (`ninja_devx.contrib.rules`)
+
+Rules from [django-rules](https://github.com/dfunckt/django-rules) (the
+`rules` extra) as permissions, checked on the request and on loaded
+objects (see [Permissions](../guide/permissions.md#django-rules)).
+
+### Rule permissions
+
+| Class | Arguments | Description |
+|---|---|---|
+| `HasRule` | `rule: str \| Predicate \| Callable[..., object]` | Requires a rule: `HasRule("blog.change_post")` or `HasRule(is_author)`. |
+
 ## Task queue adapters (`ninja_devx.contrib.tasks`)
 
 ### Task queues

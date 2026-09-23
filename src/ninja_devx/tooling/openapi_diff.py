@@ -16,7 +16,7 @@ __all__ = ["ADDITIVE", "BREAKING", "Change", "diff", "has_breaking"]
 
 BREAKING: Final = "breaking"
 ADDITIVE: Final = "additive"
-_METHODS: Final = ("get", "put", "post", "delete", "patch", "head", "options")
+_METHODS: Final = ("get", "put", "post", "delete", "patch", "head", "options", "query")
 
 
 @dataclass(frozen=True, slots=True)

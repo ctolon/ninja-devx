@@ -30,13 +30,18 @@ def test_fixed_window_counter_is_atomic_across_threads(settings):
             return "one-client"
 
     throttle = Counter("20/day", cache="backend")
+    used = []
 
     def attempt(_):
-        try:
-            return throttle.allow_request(RequestFactory().get("/"))
-        finally:
-            caches.close_all()
+        used.append(caches["backend"])
+        return throttle.allow_request(RequestFactory().get("/"))
 
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        outcomes = list(pool.map(attempt, range(100)))
+    try:
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            outcomes = list(pool.map(attempt, range(100)))
+    finally:
+        # Django's RedisCache has no close(); its per-thread pools would leak sockets.
+        for cache in {id(cache): cache for cache in used}.values():
+            for connection_pool in cache._cache._pools.values():
+                connection_pool.disconnect()
     assert sum(outcomes) == 20

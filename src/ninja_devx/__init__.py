@@ -32,6 +32,7 @@ if TYPE_CHECKING:
         ControllerConfigError,
         DependencyResolutionError,
         MixedPathWarning,
+        NinjaDevXDeprecationWarning,
         NinjaDevXError,
     )
     from .http.conditional import ETag, PreconditionFailed, PreconditionRequired, conditional
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
         patch,
         post,
         put,
+        query,
     )
     from .routing.plugins import ControllerPlugin
     from .routing.use_cases import use_case, use_query
@@ -125,6 +127,7 @@ _EXPORTS: Final[Mapping[str, str]] = MappingProxyType(
         "ControllerConfigError": ".exceptions",
         "DependencyResolutionError": ".exceptions",
         "MixedPathWarning": ".exceptions",
+        "NinjaDevXDeprecationWarning": ".exceptions",
         "NinjaDevXError": ".exceptions",
         "AsyncOperationHook": ".routing.hooks",
         "get_operation": ".routing.hooks",
@@ -146,6 +149,7 @@ _EXPORTS: Final[Mapping[str, str]] = MappingProxyType(
         "patch": ".routing.operations",
         "post": ".routing.operations",
         "put": ".routing.operations",
+        "query": ".routing.operations",
         "RouteOptions": ".routing.operations",
         "AllowAny": ".security.permissions",
         "Also": ".security.permissions",
@@ -224,6 +228,7 @@ __all__ = [
     "MissingTenant",
     "MixedPathWarning",
     "Mount",
+    "NinjaDevXDeprecationWarning",
     "NinjaDevXError",
     "OperationHook",
     "OperationInfo",
@@ -266,6 +271,7 @@ __all__ = [
     "patch",
     "post",
     "put",
+    "query",
     "request_context",
     "request_user",
     "resolve",

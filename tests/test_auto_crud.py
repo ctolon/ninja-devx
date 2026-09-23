@@ -1,5 +1,8 @@
+import django
 import pytest
 from django.contrib.auth.models import User
+from django.db import connection, models
+from django.test.utils import isolate_apps
 from ninja import NinjaAPI
 from ninja.testing import TestAsyncClient, TestClient
 
@@ -88,3 +91,69 @@ def test_misspelled_fields_fail_at_startup():
 
     with pytest.raises(ControllerConfigError, match="Did you mean 'author'"):
         Broken.as_router()
+
+
+@pytest.fixture
+def counter_model():
+    with isolate_apps("tests.testapp"):
+
+        class Counter(models.Model):
+            name = models.CharField(max_length=20)
+            hits = models.IntegerField(db_default=7)
+            doubled = models.GeneratedField(
+                expression=models.F("hits") * 2,
+                output_field=models.IntegerField(),
+                db_persist=True,
+            )
+
+            class Meta:
+                app_label = "testapp"
+
+        with connection.schema_editor() as editor:
+            editor.create_model(Counter)
+        yield Counter
+        with connection.schema_editor() as editor:
+            editor.delete_model(Counter)
+
+
+@pytest.mark.skipif(django.VERSION < (5, 0), reason="db_default and GeneratedField")
+@pytest.mark.django_db(transaction=True)
+def test_database_defaults_are_optional_and_generated_fields_read_only(counter_model):
+    class Counters(AutoCRUDController[counter_model]):
+        pass
+
+    _, in_ = model_schemas(counter_model)
+    assert set(in_.model_fields) == {"name", "hits"}
+    assert not in_.model_fields["hits"].is_required()
+
+    client = TestClient(Counters.as_router())
+    defaulted = client.post("/", json={"name": "a"})
+    assert defaulted.status_code == 201, defaulted.json()
+    assert (defaulted.json()["hits"], defaulted.json()["doubled"]) == (7, 14)
+    explicit = client.post("/", json={"name": "b", "hits": 2}).json()
+    assert (explicit["hits"], explicit["doubled"]) == (2, 4)
+
+
+@pytest.mark.skipif(django.VERSION < (5, 2), reason="CompositePrimaryKey")
+def test_composite_primary_keys_need_a_lookup_field():
+    with isolate_apps("tests.testapp"):
+
+        class Line(models.Model):
+            pk = models.CompositePrimaryKey("order", "number")
+            order = models.IntegerField()
+            number = models.IntegerField()
+            code = models.CharField(max_length=20, unique=True)
+
+            class Meta:
+                app_label = "testapp"
+
+        class Lines(AutoCRUDController[Line]):
+            pass
+
+        class LinesByCode(AutoCRUDController[Line]):
+            lookup_field = "code"
+            lookup_param = "code"
+
+        with pytest.raises(ControllerConfigError, match="composite primary key"):
+            Lines.as_router()
+        LinesByCode.as_router()

@@ -40,3 +40,11 @@ class AsyncDatabaseTestWarning(UserWarning):
 
 class MixedPathWarning(UserWarning):
     """One path is served by both sync and async operations (costs a thread hop per call)."""
+
+
+class NinjaDevXDeprecationWarning(DeprecationWarning):
+    """A ninja-devx API scheduled for removal; the message names the replacement.
+
+    ``filterwarnings = ["error::ninja_devx.NinjaDevXDeprecationWarning"]`` turns every use
+    into a test failure before upgrading.
+    """

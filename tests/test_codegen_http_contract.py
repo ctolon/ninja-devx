@@ -326,3 +326,34 @@ def test_generation_failure_does_not_replace_an_existing_file(tmp_path, monkeypa
             "devx_openapi", "tests.urls.api", "--format", "python", "--output", str(output)
         )
     assert output.read_text() == "keep me"
+
+
+def test_query_operations_send_the_query_method_with_a_body(tmp_path):
+    document = {
+        "info": {"title": "query method"},
+        "paths": {
+            "/search": {
+                "query": {
+                    "operationId": "search",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"type": "object"}}},
+                    },
+                    "responses": {
+                        "200": {"content": {"application/json": {"schema": {"type": "array"}}}}
+                    },
+                }
+            }
+        },
+    }
+    module = load_client(tmp_path, generate_python(document))
+    seen = []
+
+    def respond(request):
+        seen.append((request.method, request.content))
+        return httpx.Response(200, json=[])
+
+    with httpx.Client(transport=httpx.MockTransport(respond), base_url="https://test") as http:
+        assert module.ApiClient(client=http).search({"term": "a"}) == []
+    assert seen == [("QUERY", b'{"term":"a"}')]
+    assert '"QUERY", "/search"' in generate_typescript(document)

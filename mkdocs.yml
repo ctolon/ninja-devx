@@ -95,6 +95,7 @@ nav:
           - Controllers: guide/controllers.md
           - Permissions: guide/permissions.md
           - Object permissions: guide/object-permissions.md
+          - Browser and mobile clients: guide/browser-clients.md
           - Errors: guide/errors.md
           - Mounting and versioning: guide/mounting.md
       - Data and CRUD:

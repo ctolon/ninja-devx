@@ -75,6 +75,12 @@ structlog = [
 zeal = [
     "django-zeal>=2",
 ]
+filters = [
+    "django-filter>=24",
+]
+rules = [
+    "rules>=3.3",
+]
 
 [project.entry-points.pytest11]
 ninja_devx = "ninja_devx.pytest_plugin"
@@ -114,6 +120,8 @@ dev = [
     "redis>=5",
     "structlog>=24",
     "django-zeal>=2",
+    "django-filter>=24",
+    "rules>=3.3",
 ]
 
 docs = [

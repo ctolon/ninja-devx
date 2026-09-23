@@ -2,9 +2,12 @@ import importlib
 import sys
 from pathlib import Path
 
+import django
 import pytest
 from django.contrib.auth.models import User
 from django.core.management import CommandError, call_command
+from django.db import models
+from django.test.utils import isolate_apps
 from mypy import api as mypy_api
 from ninja.testing import TestClient
 
@@ -87,6 +90,20 @@ def test_field_selection(package):
     assert "class TagOut(Schema):\n    id: int\n" in source
     with pytest.raises(ValueError, match="no fields"):
         render_resource(Tag, ScaffoldOptions(read_fields=["missing"]))
+
+
+@pytest.mark.skipif(django.VERSION < (5, 0), reason="db_default")
+def test_database_defaults_are_optional_inputs():
+    with isolate_apps("tests.testapp"):
+
+        class Counter(models.Model):
+            hits = models.IntegerField(db_default=7)
+
+            class Meta:
+                app_label = "testapp"
+
+        source = render_resource(Counter)
+    assert "class CounterIn(Schema):\n    hits: int | None = None\n" in source
 
 
 def test_command_writes_files_and_refuses_to_overwrite(tmp_path):

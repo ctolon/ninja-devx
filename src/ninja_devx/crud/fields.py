@@ -12,6 +12,7 @@ from uuid import UUID
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Field, ForeignKey, ForeignObjectRel, ManyToManyField, Model
 
+from .._internal.compat import is_composite_primary_key
 from .._internal.types import did_you_mean
 from ..exceptions import ControllerConfigError
 
@@ -90,5 +91,11 @@ def field_type(field: ModelField, *, choices: bool = False) -> object:
 
 def lookup_type(model: type[Model], lookup_field: str) -> type[object]:
     """The Python type of ``model.<lookup_field>`` (used for ``{pk}`` path parameters)."""
-    python_type = field_type(resolve_field(model, lookup_field))
+    field = resolve_field(model, lookup_field)
+    if is_composite_primary_key(field):
+        raise ControllerConfigError(
+            f"{model.__name__} has a composite primary key, which cannot be one path "
+            "segment; set lookup_field to a unique field"
+        )
+    python_type = field_type(field)
     return python_type if isinstance(python_type, type) else str

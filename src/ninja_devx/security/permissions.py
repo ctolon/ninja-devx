@@ -66,7 +66,7 @@ PermissionResult: TypeAlias = bool | Awaitable[bool]
 AnyPermission: TypeAlias = "BasePermission[Never]"
 """Any permission, whatever object type it checks (permissions are contravariant)."""
 
-SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "QUERY"})
 _REQUEST_ATTR = "_ninja_devx_permissions"
 
 
@@ -293,6 +293,7 @@ _DEFAULT_PERMS_MAP: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "GET": ("view",),
         "HEAD": ("view",),
+        "QUERY": ("view",),
         "OPTIONS": (),
         "POST": ("add",),
         "PUT": ("change",),

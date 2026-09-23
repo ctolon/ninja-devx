@@ -48,6 +48,9 @@ def retrieve(self, request: HttpRequest, post: Instance[Post]) -> Post: ...
 | `DjangoModelPermissions()` | `view/add/change/delete` for the controller's model by HTTP method |
 | `IsOwner("field")` | object-level: `obj.<field>` is the current user; `"project__owner"` follows relations |
 | `as_permission(policy, User)` | object-level: a service-layer `Policy` ([Layers](layers.md#policies)) |
+| `HasRule("app.perm")`, `HasRule(predicate)` | a [django-rules](https://github.com/dfunckt/django-rules) permission or predicate, request- and object-level ([below](#django-rules)) |
+
+Safe methods are `GET`, `HEAD`, `OPTIONS` and `QUERY`.
 
 ## Typed users
 
@@ -70,3 +73,40 @@ checks are unknown and remain unknown through `~`, `&`, and `|`. Such decisions 
 deferred until `get_object`, `Instance`, or `check_object_permissions` receives an
 object. Object rules do not filter lists: configure queryset scoping for list access.
 Sync and async operations use the same Boolean semantics.
+
+## django-rules
+
+`ninja_devx.contrib.rules.HasRule` (`pip install "ninja-devx[rules]"`) checks a rule from
+[django-rules](https://github.com/dfunckt/django-rules) without adding its authentication
+backend:
+
+```python
+import rules
+from ninja_devx.contrib.rules import HasRule
+
+
+@rules.predicate
+def is_author(user, article):
+    return article is None or article.author_id == user.pk
+
+
+rules.add_perm("blog.change_article", is_author | rules.is_staff)
+
+
+class ArticleController(CRUDController[Article, ArticleOut, ArticleIn]):
+    options = ControllerOptions(permissions=[IsAuthenticated(), HasRule("blog.change_article")])
+
+    @post("/{pk}/publish", permissions=Also(HasRule(is_author)))
+    def publish(self, request, pk: int): ...
+```
+
+- A string is a name in rules' permission set; anything else is a predicate (plain callables
+  taking `(user)` or `(user, obj)` are wrapped).
+- The rule runs with the user before the operation, and with the user and the object when
+  the operation loads one. Before that, two-argument predicates receive `None` for the
+  object, as everywhere in rules; list operations never load one, so `is_author` above
+  allows lists and checks each detail object.
+- Anonymous callers are tested as `AnonymousUser`. Async operations run the predicates in a
+  thread.
+- Rules cannot filter querysets. For lists restricted to the objects a user may see, use
+  [object permissions](object-permissions.md) or `get_queryset`.

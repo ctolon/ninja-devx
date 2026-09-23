@@ -61,7 +61,8 @@ jobs:
       - name: Test the selected framework version
         env:
           DJANGO_VERSION: ${{ matrix.django }}
-        run: uv run --locked --isolated --with "django==$DJANGO_VERSION" pytest -q
+        # django-filter is resolved with Django: the locked 26.x needs Django 5.2+.
+        run: uv run --locked --isolated --with "django==$DJANGO_VERSION" --with django-filter pytest -q
 
   docker:
     runs-on: ubuntu-24.04

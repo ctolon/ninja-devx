@@ -21,6 +21,7 @@ from uuid import UUID
 from django.db import models
 from django.db.models import Field, Model
 
+from .._internal.compat import has_db_default
 from ..crud.fields import ModelField, field_type
 
 __all__ = ["ScaffoldOptions", "render_resource", "render_tests", "snake_case"]
@@ -245,7 +246,12 @@ def _required_first(model_field: Field[object, object]) -> int:
 def _is_required(model_field: Field[object, object]) -> bool:
     if model_field.many_to_many:
         return False
-    return not (model_field.null or model_field.blank or model_field.has_default())
+    return not (
+        model_field.null
+        or model_field.blank
+        or model_field.has_default()
+        or has_db_default(model_field)
+    )
 
 
 # --- Annotations -----------------------------------------------------------------
@@ -360,6 +366,8 @@ def _write_annotation(
         return attribute, annotation, " = []"
     if model_field.null:
         return attribute, annotation, " = None"
+    if has_db_default(model_field):
+        return attribute, f"{annotation} | None", " = None"
     if model_field.has_default() and not callable(model_field.default):
         default: object = model_field.default
         if isinstance(default, Enum):

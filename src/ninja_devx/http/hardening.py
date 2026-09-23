@@ -24,7 +24,7 @@ from .middleware import Middleware
 
 __all__ = ["EnforceContentTypeMiddleware", "JsonDepthMiddleware", "MaxBodySizeMiddleware"]
 
-_BODY_METHODS: Final = frozenset({"POST", "PUT", "PATCH"})
+_BODY_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "QUERY"})
 _CONTENT_TYPE_HEADER: Final = "CONTENT_TYPE"
 
 
@@ -59,7 +59,7 @@ class EnforceContentTypeMiddleware(Middleware):
     A request without a ``Content-Type`` header passes.
 
     :param media_types: Accepted media types (parameters such as ``; charset=`` ignored).
-    :param methods: Methods to check (default: POST/PUT/PATCH).
+    :param methods: Methods to check (default: POST/PUT/PATCH/QUERY).
     """
 
     def __init__(

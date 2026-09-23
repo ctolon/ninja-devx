@@ -32,6 +32,7 @@ __all__ = [
     "patch",
     "post",
     "put",
+    "query",
 ]
 
 C = TypeVar("C", bound="Controller")
@@ -201,3 +202,18 @@ def delete(
     path: str = "/", **options: Unpack[OperationOptions]
 ) -> Callable[[OperationMethod[C, RequestT, P, R]], OperationMethod[C, RequestT, P, R]]:
     return api_operation("DELETE", path, **options)
+
+
+def query(
+    path: str = "/", **options: Unpack[OperationOptions]
+) -> Callable[[OperationMethod[C, RequestT, P, R]], OperationMethod[C, RequestT, P, R]]:
+    """An HTTP ``QUERY`` operation: safe and idempotent like ``GET``, with a request body.
+
+    Permissions treat it as a read (``view``). The OpenAPI document lists it under the
+    ``query`` key that OpenAPI 3.2 defines; tools that only know 3.1 skip it.
+
+    TODO: Django has no QUERY support of its own yet. ``CsrfViewMiddleware`` treats it as
+    unsafe (session-authenticated calls need the CSRF token) and ``django.test.Client`` has
+    no ``query()`` (use ``client.request("QUERY", ...)``). Revisit when Django adds it.
+    """
+    return api_operation("QUERY", path, **options)

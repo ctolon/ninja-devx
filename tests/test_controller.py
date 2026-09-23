@@ -12,9 +12,11 @@ from ninja_devx import (
     Controller,
     ControllerConfigError,
     ControllerOptions,
+    DenyAll,
     Scope,
     get,
     post,
+    query,
 )
 from tests.future_annotations_app import ItemController
 
@@ -181,6 +183,23 @@ def test_class_level_auth_and_route_level_override():
     assert client.get("/public").status_code == 200
 
 
+def test_options_set_as_class_attributes_fail_instead_of_being_ignored():
+    class Misconfigured(Controller):
+        permissions = [DenyAll()]
+
+        @get("/")
+        def index(self, request): ...
+
+    with pytest.raises(ControllerConfigError, match=r"options = ControllerOptions\(permissions"):
+        Misconfigured.as_router()
+
+    class Subclass(Misconfigured):
+        pass
+
+    with pytest.raises(ControllerConfigError, match=r"Misconfigured\.permissions"):
+        Subclass.as_router()
+
+
 def test_as_router_arguments_override_class_settings():
     class OpenController(Controller):
         @get("/")
@@ -304,6 +323,38 @@ def test_unresolvable_annotations_are_reported():
 
     with pytest.raises(ControllerConfigError, match=r"BrokenController\.view"):
         BrokenController.as_router()
+
+
+def test_annotations_naming_a_class_attribute_explain_the_shadowing():
+    class ShadowingController(Controller):
+        Payload = dict
+
+        @get("/")
+        def view(self, request, value: "Payload"): ...
+
+    with pytest.raises(ControllerConfigError, match="`Payload` is also an attribute of"):
+        ShadowingController.as_router()
+
+
+class Term(Schema):
+    term: str
+
+
+class LookupController(Controller):
+    @query("/", response=list[Term])
+    def lookup(self, request, body: Term):
+        return [body]
+
+
+def test_query_operations_take_a_body_and_are_documented_as_query():
+    response = TestClient(LookupController.as_router()).request("QUERY", "/", json={"term": "a"})
+    assert response.json() == [{"term": "a"}]
+
+    api = NinjaAPI(urls_namespace="query-method")
+    api.add_router("/lookup", LookupController.as_router())
+    item = api.get_openapi_schema(path_prefix="")["paths"]["/lookup/"]
+    assert set(item) == {"query"}
+    assert "requestBody" in item["query"]
 
 
 def test_ninja_registration_errors_mention_the_method():

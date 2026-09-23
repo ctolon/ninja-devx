@@ -77,6 +77,7 @@ from .annotations import (
 )
 from .fields import resolve_field
 from .filters import FilterFields
+from .filtersets import FilterSetLike, apply_filterset
 from .nested import Parent, get_parent, parent_bindings
 from .optimization import (
     ExpandRule,
@@ -651,6 +652,9 @@ class ListConfig(ModelController[ModelT], Generic[ModelT, OutT]):
     """Name of the search query parameter."""
     filter_fields: ClassVar[FilterFields] = MappingProxyType({})
     """Generated typed filters: ``{"status": ("exact",), "created": ("gte", "lte")}``."""
+    filterset_class: ClassVar[type[FilterSetLike] | None] = None
+    """A django-filter ``FilterSet`` whose filters become query parameters of ``GET /``
+    (``pip install ninja-devx[filters]``); it runs with the request."""
     ordering_fields: ClassVar[Sequence[str]] = ()
     """Fields the client may order by (``?ordering=-created``), validated as an enum."""
     ordering_param: ClassVar[str] = "ordering"
@@ -742,6 +746,11 @@ class ListConfig(ModelController[ModelT], Generic[ModelT, OutT]):
         if backend is not None and isinstance(term, str) and term:
             queryset = cast(
                 "QuerySet[ModelT]", backend.search(queryset, term, type(self).search_fields)
+            )
+        filterset_class = type(self).filterset_class
+        if filterset_class is not None:
+            queryset = cast(
+                "QuerySet[ModelT]", apply_filterset(filterset_class, request, queryset, filters)
             )
         return self.order_queryset(filters.filter(queryset), ordering)
 

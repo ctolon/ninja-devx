@@ -9,7 +9,8 @@
 - The output schema (``PostOut``) has ``schema_fields`` minus ``schema_exclude`` and
   ``write_only_fields``.
 - The input schema (``PostIn``) also leaves out the primary key, non-editable fields
-  (``auto_now``) and ``read_only_fields``.
+  (``auto_now``, ``GeneratedField``) and ``read_only_fields``. Fields with a ``db_default``
+  are optional; left out, the database supplies the value.
 - Everything else (filters, permissions, tenancy, pagination...) is configured as on
   ``CRUDController``. Switch to explicit schemas once they need custom fields.
 """
@@ -25,6 +26,7 @@ from ninja.orm import create_schema
 from pydantic import BaseModel
 
 from .._internal.cache import owned_cache
+from .._internal.compat import has_db_default
 from .._internal.types import did_you_mean
 from ..exceptions import ControllerConfigError
 from .controllers import CRUDController, InT, ModelT, OutT, ReadOnlyModelController
@@ -109,7 +111,17 @@ def model_schemas(
     output_fields = [name for name in chosen if name not in write_only]
     input_fields = [name for name in chosen if name not in automatic and name not in read_only]
     output = create_schema(model, name=f"{model.__name__}Out", fields=output_fields)
-    input_ = create_schema(model, name=f"{model.__name__}In", fields=input_fields)
+    database_defaults = [
+        field.name
+        for field in options.concrete_fields
+        if field.name in input_fields and has_db_default(field)
+    ]
+    input_ = create_schema(
+        model,
+        name=f"{model.__name__}In",
+        fields=input_fields,
+        optional_fields=database_defaults or None,
+    )
     _schemas[key] = (output, input_)
     return output, input_
 

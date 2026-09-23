@@ -33,8 +33,11 @@ class TagController(AutoCRUDController[Tag]):
 ```
 
 - The output schema is `TagOut` and the input schema is `TagIn` (OpenAPI component
-  names). The primary key and non-editable fields (`auto_now`) are read-only
-  automatically.
+  names). The primary key and non-editable fields (`auto_now`, `GeneratedField`) are
+  read-only automatically. Fields with a `db_default` are optional inputs: left out (or
+  `null` on a non-null column), the database fills them in on create.
+- A model with a `CompositePrimaryKey` has no single-segment `{pk}`; set `lookup_field` (and
+  `lookup_param`) to a unique field, otherwise startup fails with that hint.
 - Misspelled field names fail at startup with a suggestion.
 - Also available: `AutoReadOnlyController`, `AsyncAutoCRUDController`,
   `AsyncAutoReadOnlyController`, and `model_schemas(model, ...)` to get the pair yourself.
@@ -78,6 +81,7 @@ the N+1 optimizations. Override `get_queryset` for your own scoping.
 | `parent` | `None` | `Parent(Model, field=...)` for nested routes |
 | `search_fields` | `()` | `?search=` over `icontains` lookups |
 | `filter_fields` | `{}` | `{"status": ("exact",), "created": ("gte", "lte"), "id": ("in",)}` |
+| `filterset_class` | `None` | a django-filter `FilterSet` ([below](#django-filter-filtersets)) |
 | `filter_schema` | `None` | an explicit `FilterSchema` instead |
 | `ordering_fields` / `default_ordering` | `()` | `?ordering=-created`, validated against an enum |
 | `search_param` / `ordering_param` | `"search"` / `"ordering"` | query parameter names |
@@ -170,6 +174,42 @@ The `search` parameter stays in the generated filter schema and in OpenAPI; with
 the controller passes the term to `search()` instead of applying `icontains` lookups.
 `PostgresSearch` computes the search vector per row; add a `SearchVectorField` with a GIN
 index for production tables.
+
+## django-filter FilterSets
+
+Projects coming from DRF can keep their `FilterSet` classes (`pip install
+"ninja-devx[filters]"`):
+
+```python
+import django_filters
+
+
+class ArticleFilter(django_filters.FilterSet):
+    created = django_filters.DateFromToRangeFilter()
+    mine = django_filters.BooleanFilter(method="filter_mine", help_text="Only my articles")
+
+    class Meta:
+        model = Article
+        fields = {"title": ["icontains"], "published": ["exact"], "id": ["in"]}
+
+    def filter_mine(self, queryset, name, value):
+        return queryset.filter(author=self.request.user) if value else queryset
+
+
+class ArticleController(ReadOnlyModelController[Article, ArticleOut]):
+    filterset_class = ArticleFilter
+    search_fields = ("body",)  # still available next to the FilterSet
+```
+
+- Every filter is a typed query parameter in OpenAPI, with `help_text` as its description:
+  `?title__icontains=`, `?published=`, `?id__in=1,2`, and for range filters one parameter
+  per end (`?created_after=`/`?created_before=`, `?price_min=`/`?price_max=`).
+- The FilterSet still validates and applies the values, with `request` set, so `method=`
+  filters and request-dependent querysets work as in DRF. A value it rejects is a 422 with
+  `loc: ["query", "<name>"]` and the form's error code as `type`.
+- `filterset_class` excludes `filter_fields` and `filter_schema`; a FilterSet for another
+  model fails at startup. With `selector_class`, the selector receives the filters and the
+  FilterSet is not applied.
 
 ## Nested resources
 

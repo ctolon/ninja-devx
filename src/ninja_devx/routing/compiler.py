@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import functools
 import inspect
 import re
@@ -21,7 +22,7 @@ from ninja import Router
 from ninja.constants import NOT_SET, NOT_SET_TYPE
 from ninja.throttling import BaseThrottle
 
-from .._internal.compat import signature
+from .._internal.compat import annotation_sources, signature
 from .._internal.generics import defined_in, find_unbound, resolve_annotation, substitute
 from .._internal.types import (
     AuthSpec,
@@ -232,6 +233,29 @@ class Registration:
 
     # --- Signature ---------------------------------------------------------------
 
+    def _shadowing_hint(self) -> str:
+        """Why an annotation naming a class attribute fails (``def list(self) -> list[X]``)."""
+        owner_name = self.func.__qualname__.rpartition(".")[0]
+        owner = next((k for k in self.cls.__mro__ if k.__qualname__ == owner_name), None)
+        if owner is None:
+            return ""
+        used = {
+            name
+            for source in annotation_sources(self.func).values()
+            for name in re.findall(r"[A-Za-z_]\w*", source)
+        }
+        shadowed = sorted(used & vars(owner).keys())
+        if not shadowed:
+            return ""
+        names = ", ".join(f"`{name}`" for name in shadowed)
+        builtin = next((name for name in shadowed if hasattr(builtins, name)), None)
+        fix = f"write `builtins.{builtin}`" if builtin else "use a module-level name"
+        return (
+            f". {names} is also an attribute of {owner.__qualname__}: inside the class body "
+            "an annotation sees that attribute instead of the module-level name (or, as a "
+            f"string, cannot see it at all); {fix} or rename the attribute"
+        )
+
     def _parameters(self) -> tuple[list[inspect.Parameter], tuple[ParameterBinding, ...]]:
         parameters = list(signature(self.func).parameters.values())
         positional = (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
@@ -241,7 +265,7 @@ class Registration:
             hints: dict[str, object] = get_type_hints(self.func, include_extras=True)
         except Exception as exc:
             raise ControllerConfigError(
-                f"Cannot resolve type annotations of {self.qualname}: {exc}"
+                f"Cannot resolve type annotations of {self.qualname}: {exc}{self._shadowing_hint()}"
             ) from exc
 
         request = parameters[1].replace(
@@ -448,7 +472,7 @@ def _validation_schema() -> dict[str, JSONValue]:
     }
 
 
-_BODY_METHODS: Final = frozenset({"POST", "PUT", "PATCH"})
+_BODY_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "QUERY"})
 
 
 def _error_response_schema(code: int) -> JSONValue:

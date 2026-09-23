@@ -4,6 +4,34 @@ All notable changes to this project are documented here. ninja-devx follows
 [semantic versioning](https://semver.org); see the support and stability page for what
 that means before 1.0.
 
+## Unreleased
+
+### Added
+
+- `filterset_class` on list endpoints: django-filter `FilterSet` classes become typed,
+  documented query parameters and run with the request (`filters` extra).
+- `ninja_devx.contrib.rules.HasRule`: django-rules permissions and predicates, checked on
+  the request and on loaded objects (`rules` extra).
+- `@query`: HTTP `QUERY` operations (a safe method with a request body), treated as reads by
+  permissions and supported by the OpenAPI diff and the generated clients.
+- `NinjaDevXDeprecationWarning`, the category future deprecations will use.
+- Guide for browser and mobile clients: session + CSRF for single-page apps, django-allauth
+  headless tokens for apps, API keys for machines.
+
+### Changed
+
+- Generated input schemas and `devx_scaffold` make fields with a `db_default` optional;
+  creating without them (or with `null` on a non-null column) lets the database fill them.
+- A model with a `CompositePrimaryKey` and the default `lookup_field` fails at startup with
+  a hint instead of generating a lookup that cannot match.
+- An annotation that cannot be resolved because it names an attribute of its own class
+  (`def list(self, request) -> list[Out]` on Python 3.14) now says so and suggests the fix.
+- A controller option set as a class attribute (`permissions = [...]` instead of
+  `options = ControllerOptions(permissions=[...])`) fails at startup; it used to be ignored
+  silently, leaving the operations unprotected.
+- CI's compatibility matrix resolves django-filter together with the tested Django, so the
+  Django 4.2 rows run django-filter 25.x instead of the locked 26.x (which needs 5.2+).
+
 ## 0.0.2
 
 Second alpha. Focuses on module boundaries, introspection, explicit query planning and a

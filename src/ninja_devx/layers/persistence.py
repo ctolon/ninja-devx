@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, router, transaction
 from django.utils.translation import gettext as _
 
+from .._internal.compat import has_db_default
 from .errors import ValidationFailed
 
 __all__ = ["model_field", "save_instance", "unknown_fields", "validation_failed"]
@@ -51,15 +52,22 @@ def save_instance(
 ) -> ModelT:
     """Assign ``data`` to ``instance``, validate, save and set many-to-many relations.
 
-    Foreign keys accept an instance or a primary key. ``Model.full_clean`` errors are
-    raised as ``ValidationFailed``. Runs in one transaction (a savepoint when nested).
+    Foreign keys accept an instance or a primary key. On a new instance, ``None`` for a
+    non-null field with ``db_default`` leaves the value to the database. ``Model.full_clean``
+    errors are raised as ``ValidationFailed``. Runs in one transaction (a savepoint when
+    nested).
     """
     model = type(instance)
+    adding = instance._state.adding
     many_to_many: dict[str, object] = {}
+    database_defaults: list[str] = []
     for name, value in data.items():
         field = model_field(model, name)
         if field is None:
             raise ValueError(f"{model.__name__} has no field {name!r}")
+        if value is None and adding and not field.null and has_db_default(field):
+            database_defaults.append(field.attname)
+            continue
         if field.many_to_many:
             many_to_many[field.name] = value
         elif field.is_relation and not isinstance(value, models.Model):
@@ -75,6 +83,14 @@ def save_instance(
             except DjangoValidationError as exc:
                 raise validation_failed(exc) from exc
         instance.save(using=using)
+        # Backends without INSERT ... RETURNING leave the DatabaseDefault expression behind.
+        unread = [
+            name
+            for name in database_defaults
+            if hasattr(instance.__dict__.get(name), "resolve_expression")
+        ]
+        if unread:
+            instance.refresh_from_db(using=using, fields=unread)
         for name, value in many_to_many.items():
             manager: object = getattr(instance, name)
             setter = getattr(manager, "set")  # noqa: B009 - related managers are untyped
