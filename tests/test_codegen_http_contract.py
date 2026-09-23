@@ -219,25 +219,9 @@ async def test_async_generated_contract_matches_sync(tmp_path, style):
 
 
 @pytest.mark.parametrize("generator", [generate_python, generate_typescript])
-@pytest.mark.parametrize("feature", ["multipart", "cookie", "stream", "style"])
-def test_unsupported_contracts_fail_instead_of_disappearing(generator, feature):
+def test_unsupported_parameter_styles_fail_instead_of_disappearing(generator):
     spec = contract_document()
-    operation = spec["paths"]["/run"]["post"]
-    if feature == "multipart":
-        operation["requestBody"] = {
-            "required": True,
-            "content": {"multipart/form-data": {"schema": {"type": "object"}}},
-        }
-    elif feature == "cookie":
-        operation["parameters"].append(
-            {"name": "session", "in": "cookie", "required": True, "schema": {"type": "string"}}
-        )
-    elif feature == "stream":
-        operation["responses"]["200"]["content"] = {
-            "text/event-stream": {"schema": {"type": "string"}}
-        }
-    else:
-        operation["parameters"][0]["style"] = "deepObject"
+    spec["paths"]["/run"]["post"]["parameters"][0]["style"] = "deepObject"
     with pytest.raises(ValueError, match="unsupported"):
         generator(spec)
 
@@ -333,10 +317,7 @@ def test_generation_failure_does_not_replace_an_existing_file(tmp_path, monkeypa
     from tests.urls import api
 
     spec = contract_document()
-    spec["paths"]["/run"]["post"]["requestBody"] = {
-        "required": True,
-        "content": {"multipart/form-data": {"schema": {"type": "object"}}},
-    }
+    spec["paths"]["/run"]["post"]["parameters"][0]["style"] = "deepObject"
     monkeypatch.setattr(api, "get_openapi_schema", lambda **kwargs: spec)
     output = tmp_path / "client.py"
     output.write_text("keep me")

@@ -146,3 +146,100 @@ counterpart to release resources. Cleanup runs in reverse order for every entere
 that did not finish its response callback, including a hook whose request callback failed.
 It cannot replace the original exception; cleanup failures are logged and outer cleanup
 continues. Normal error responses still use `process_response`.
+
+## Security headers
+
+`SecurityHeadersMiddleware` sets conservative defaults (`X-Content-Type-Options`,
+`Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`) and never overwrites a header a
+view already set. HSTS and CSP are opt-in:
+
+```python
+from ninja_devx.http.security import SecurityHeadersMiddleware
+
+use_middleware(
+    api,
+    SecurityHeadersMiddleware(
+        hsts="max-age=31536000; includeSubDomains",
+        csp="default-src 'self'",
+    ),
+)
+```
+
+## Request hardening
+
+Bound request bodies and block unexpected content types before an operation runs. Each
+short-circuits with the package error shape, honouring the `error_format` setting:
+
+```python
+from ninja_devx.http.hardening import (
+    EnforceContentTypeMiddleware,
+    JsonDepthMiddleware,
+    MaxBodySizeMiddleware,
+)
+
+use_middleware(
+    api,
+    MaxBodySizeMiddleware(5_000_000),             # 413 above this size
+    EnforceContentTypeMiddleware({"application/json"}),  # 415 for other media types
+    JsonDepthMiddleware(max_depth=32),            # 400 for deep JSON
+)
+```
+
+`MaxBodySizeMiddleware` reads `Content-Length`; chunked uploads without one are bounded by
+Django's `DATA_UPLOAD_MAX_MEMORY_SIZE`. `EnforceContentTypeMiddleware` lets a request
+without a `Content-Type` through, so pair it with a body limit rather than relying on it
+alone. `JsonDepthMiddleware` rejects bodies that would exhaust the parser as well as ones
+that merely exceed `max_depth`.
+
+## Response caching
+
+`ResponseCacheMiddleware` caches GET/HEAD responses (body, status, content type) and adds
+`Cache-Control`/`Vary` to hits and misses alike. The directive is `private` when `vary_on`
+includes `Authorization` or `Cookie`, `public` otherwise. Invalidate a prefix after a write
+with `invalidate_cache`:
+
+```python
+from ninja_devx.http.cache import ResponseCacheMiddleware, invalidate_cache
+
+use_middleware(
+    api,
+    ResponseCacheMiddleware(ttl=60, vary_on=("Authorization",), key_prefix="articles"),
+)
+
+invalidate_cache("articles")  # after a write; the same key_prefix
+```
+
+Cache reads and writes are synchronous calls to Django's cache backend, also under async
+operations.
+
+## Pagination headers
+
+`PaginationHeadersMiddleware` turns pagination metadata into headers: the RFC 8288 `Link`
+header (`rel="next"`/`rel="prev"`) for limit/offset and cursor pagination, and
+`X-Total-Count` when limit/offset pagination computed a count.
+
+```python
+from ninja_devx.http.pagination_headers import PaginationHeadersMiddleware
+
+use_middleware(api, PaginationHeadersMiddleware())
+```
+
+## Application plugins
+
+An `APIPlugin` bundles middleware, error rules and startup work; `install(api, plugins)`
+applies them in one call, before routers are mounted. Error rules of all plugins are
+combined into one `ErrorMap`, so the closest exception class wins regardless of plugin
+order. This is the API-level counterpart to the per-operation `ControllerPlugin`.
+
+```python
+from ninja_devx.plugins import APIPlugin, install
+from ninja_devx.http.middleware import RequestIDMiddleware
+
+
+class Observability(APIPlugin):
+    def middleware(self):
+        return [RequestIDMiddleware()]
+
+
+install(api, [Observability()])
+```

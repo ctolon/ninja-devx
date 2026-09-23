@@ -10,10 +10,11 @@ from django.http import HttpRequest
 from pydantic import BaseModel
 
 from ..configuration.settings import class_setting, get_settings
+from ..http.explain import QUERY_PLAN_ATTR
 from ..routing.hooks import get_operation
 from ..security.auth import request_user
 from ..serialization.visibility import response_shape
-from .optimization import optimize_queryset
+from .optimization import optimize_queryset, query_plan
 from .writes import active_database
 
 if TYPE_CHECKING:
@@ -42,14 +43,22 @@ def scoped_queryset(controller: ModelController[ModelT], request: HttpRequest) -
     schema = cls.output_schema()
     optimize = class_setting(cls, "optimize_queries", get_settings().optimize_queries)
     if schema is not None and optimize:
+        expand = expanded_fields(request, schema)
+        plan = query_plan(queryset.model, schema, expand, cls.related)
+        request.__dict__[QUERY_PLAN_ATTR] = plan.lookups()
         queryset = optimize_queryset(
-            queryset, schema, only=optimize == "only", expand=expanded_fields(request, schema)
+            queryset,
+            schema,
+            only=optimize == "only",
+            expand=expand,
+            hints=cls.related,
+            rules=cls.expand_rules,
         )
     operation = get_operation(request)
     if operation is not None and operation.is_async and get_settings().async_fetch_mode == "raise":
         fetch_mode = getattr(queryset, "fetch_mode", None)  # Django 6.1+
         if fetch_mode is not None:
-            queryset = fetch_mode(getattr(models, "FETCH_RAISE"))  # noqa: B009
+            queryset = fetch_mode(getattr(models, "FETCH_RAISE"))  # noqa: B009 - Django 5.2+ only
     return queryset
 
 

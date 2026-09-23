@@ -10,7 +10,7 @@ centralizes recurring tenant/owner scoping, transaction, permission, dependency-
 and error-handling rules while keeping Django models and Ninja schemas.
 
 Read the [scope and engineering rationale](project/scope.md) for adoption criteria,
-responsibility boundaries and tradeoffs. Version 0.0.1 is an alpha release; the
+responsibility boundaries and tradeoffs. Version 0.0.2 is an alpha release; the
 [support policy](project/support.md) describes the compatibility contract.
 
 [Get started](getting-started/quickstart.md){ .md-button .md-button--primary }
@@ -71,12 +71,22 @@ endpoints, with:
 
     [Services and layers](guide/layers.md)
 
+-   **CQRS without a bus**
+
+    ---
+
+    `use_case` and `use_query` handlers, `DomainEvent` delivered after commit through an
+    explicit `EventBus`, and `UnitOfWork` for multi-repository transactions.
+
+    [CQRS and DDD](guide/cqrs.md)
+
 -   **SaaS-ready HTTP**
 
     ---
 
-    `tenant_field`, `ETag`/`If-Match`, user, scope and tenant throttles, and role-based
-    field visibility.
+    `tenant_field`, `ETag`/`If-Match`, user, scope and tenant throttles, role-based field
+    visibility, and middleware for security headers, request hardening, response caching
+    and pagination headers.
 
     [Multi-tenancy](guide/tenancy.md)
 
@@ -98,7 +108,21 @@ endpoints, with:
 
     [Testing](guide/testing.md)
 
+-   **Inspect and diagnose**
+
+    ---
+
+    `devx_inspect` prints the resolved policy of a mounted controller, and
+    `@requires_related` makes N+1 loading explicit.
+
+    [Inspecting controllers](guide/inspect.md)
+
 </div>
+
+The [guides index](guide/index.md) maps each task to its page, and
+[Controllers](guide/controllers.md), [CRUD](guide/crud.md),
+[Permissions](guide/permissions.md) and [Errors](guide/errors.md) are the best starting
+points.
 
 ## Principles
 

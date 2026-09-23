@@ -18,6 +18,9 @@ loading the URLconf.
 | `ninja_devx.W003` | an output schema field is not a model field or attribute, and the schema does not resolve it |
 | `ninja_devx.E004` | `service_class` needs constructor arguments, but the controller has no container |
 | `ninja_devx.W005` | an output field that `VisibleTo` can hide is required |
+| `ninja_devx.W006` | a `related` or `@requires_related` hint names a lookup the model cannot resolve |
+| `ninja_devx.W007` | `expand_rules[...].limit` targets a relation that is not a plain reverse foreign key |
+| `ninja_devx.E007` | `aggregate_fields` names a missing model field |
 
 Mistakes that make a controller unusable, such as a bad `owner_field` or an unresolvable
 `Inject[T]`, raise at `as_router()` instead.
@@ -63,3 +66,31 @@ CommandError: 3 schema drift error(s)
 
 Pass a model (`devx_scaffold --check blog.Post`) to check only its controllers. Run it in
 CI next to `makemigrations --check`.
+
+## `manage.py devx_openapi --against`
+
+Client code breaks when an operation, field or enum value disappears or an input becomes
+required. Keep the last published document as a baseline and compare the current API
+against it:
+
+```text
+$ python manage.py devx_openapi --against openapi-baseline.json
+[breaking] GET /v1/posts/{pk}: response 200 removed
+[additive] POST /v1/posts body.tags: field added
+CommandError: Breaking OpenAPI changes detected
+```
+
+Removed paths, operations, fields, responses and enum values, new required inputs and
+changed types fail the command; additive changes are listed. Add `--output` to write the
+current document once the comparison passes, which refreshes the baseline in one step.
+Array item types are compared; nullability expressed through `anyOf` is not.
+
+## Inspect the resolved policy
+
+`check` catches mistakes; [`devx_inspect`](inspect.md) explains what a controller actually
+does. Run it when a permission, scope, relation or operation does not behave as expected:
+
+```bash
+python manage.py devx_inspect app.api.PostController
+python manage.py devx_inspect /v1/posts --json
+```

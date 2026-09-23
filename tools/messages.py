@@ -3,11 +3,15 @@
 ::
 
     uv run python tools/messages.py            # update .po files and compile .mo files
+    uv run python tools/messages.py --language tr
     uv run python tools/messages.py --check    # CI: fail when catalogs are stale or incomplete
 
 Messages are the string literals passed to ``gettext``, ``gettext_lazy``, ``gettext_noop``
 or ``_``. No GNU gettext binaries are needed: extraction uses the AST and ``.mo`` files are
 written directly. Translators edit ``msgstr`` lines in the ``.po`` files, then run the tool.
+
+Languages come from ``--language`` (repeatable) or, without it, from the catalogs already
+present under ``src/ninja_devx/locale``. The package ships English defaults and no catalog.
 """
 
 from __future__ import annotations
@@ -130,13 +134,32 @@ def compile_mo(language: str, translations: dict[str, str]) -> bytes:
     return head + struct.pack(f"<{len(table)}I", *table) + blob
 
 
+def discover_languages() -> tuple[str, ...]:
+    """Language codes with a ``django.po`` under ``src/ninja_devx/locale``."""
+    if not LOCALE.exists():
+        return ()
+    return tuple(
+        sorted(
+            path.name for path in LOCALE.iterdir() if (path / "LC_MESSAGES" / "django.po").exists()
+        )
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="only report stale catalogs")
+    parser.add_argument(
+        "--language",
+        action="append",
+        default=[],
+        metavar="CODE",
+        help="language to update (repeatable); default: existing catalogs",
+    )
     arguments = parser.parse_args(argv)
+    languages = tuple(dict.fromkeys(arguments.language)) or LANGUAGES or discover_languages()
     messages = extract()
     problems: list[str] = []
-    for language in LANGUAGES:
+    for language in languages:
         directory = LOCALE / language / "LC_MESSAGES"
         po_path, mo_path = directory / "django.po", directory / "django.mo"
         translations = {key: value for key, value in read_po(po_path).items() if key in messages}

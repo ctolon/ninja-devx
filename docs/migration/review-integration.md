@@ -1,9 +1,32 @@
-# Pre-release review integration
+# Version changes
 
-These changes belong to the unreleased **0.0.1** development tree. They intentionally
-change APIs before the first release. No CI or Git configuration is changed.
+Public API changes by release, with the edits an upgrading application needs. Migration
+guides from other frameworks are separate pages.
 
-## Module layout
+## 0.0.2
+
+- `GrantsBackend` moved from `ninja_devx.security.object_permissions` to
+  `ninja_devx.contrib.grants.backends`. Update the import; the object-permission registry
+  resolves the built-in backend by name (`"grants"`) once `ninja_devx.contrib.grants` is
+  installed.
+- A controller with a `search_backend` keeps its `search` query parameter in the generated
+  filter schema and in OpenAPI; the backend applies the term instead of the generated
+  `icontains` lookups. Generated clients need no change.
+- `rotate_api_key` and `devx_apikey rotate` refuse a revoked key instead of reviving it;
+  create a new key instead. Pass `rate_limit=None` to clear the limit while rotating.
+- `devx_openapi --against` combined with `--output` writes the current document after the
+  comparison passes, so one command refreshes a baseline.
+- `LimitOffsetPagination` and `CursorPagination` both publish link metadata for
+  `PaginationHeadersMiddleware`; `X-Total-Count` is set only when a count exists.
+- `ninja_devx.testing.sample`/`samples` return JSON-serialisable values (UUIDs and
+  timestamps as strings) and raise `TypeError` for a field type they cannot fill.
+
+## 0.0.1
+
+These changes shipped in the **0.0.1** release. They intentionally changed APIs before the
+first release. No CI or Git configuration was changed.
+
+### Module layout
 
 Root symbol imports such as `from ninja_devx import Controller, Container, get` remain
 available. Direct module imports use the following locations. Private module names
@@ -58,7 +81,7 @@ Router metadata is owned by each router; enumeration and settings caches belong 
 Django application registry. Generated schema and generic-resolution caches belong to
 the source class. Subclasses do not inherit cached resolutions from their parents.
 
-## Behavior changes
+### Behavior changes
 
 - Run Django migrations with `ninja_devx` installed before enabling idempotency.
   Replace `IDEMPOTENCY_CACHE` with `IDEMPOTENCY_DATABASE`. The claim connection must
@@ -87,7 +110,7 @@ the source class. Subclasses do not inherit cached resolutions from their parent
   Completion responses add checksum/version/ETag metadata; store version IDs for immutable
   references. Expired pending uploads can be cleaned with `devx_uploads`.
 
-## Persistence, history and examples
+### Persistence, history and examples
 
 Create/update/bulk/import now verify the persisted result against the controller's
 queryset and object permissions before committing. Returning an out-of-scope object

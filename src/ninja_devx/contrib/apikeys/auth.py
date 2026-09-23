@@ -21,6 +21,7 @@ from ...security.permissions import BasePermission
 from .models import APIKey, validate_rate
 
 __all__ = [
+    "KEEP",
     "APIKeyAuth",
     "APIKeyBearer",
     "APIKeyRateThrottle",
@@ -29,12 +30,15 @@ __all__ = [
     "create_api_key",
     "current_api_key",
     "revoke_api_key",
+    "rotate_api_key",
     "scope_allows",
 ]
 
 KEY_PREFIX: Final = "ndx"
 _KEY_ATTR: Final = "_ninja_devx_api_key"
 _TOUCH_EVERY: Final = timedelta(minutes=1)
+KEEP: Final = object()
+"""Sentinel: keep the current value when rotating a key."""
 
 
 def _digest(secret: str) -> str:
@@ -81,6 +85,48 @@ def revoke_api_key(key: APIKey) -> None:
     """
     key.revoked_at = timezone.now()
     key.save(update_fields=["revoked_at"])
+
+
+def rotate_api_key(
+    key: APIKey,
+    *,
+    scopes: Iterable[str] | None = None,
+    expires_at: object = KEEP,
+    rate_limit: object = KEEP,
+) -> tuple[APIKey, str]:
+    """Replace ``key``'s secret in place and return the new raw value.
+
+    The old secret stops working immediately. The row (owner, name, creation time) is kept;
+    pass ``scopes`` to update them, and ``expires_at``/``rate_limit`` (including ``None`` to
+    clear them) to change the expiry or the limit. A revoked key stays revoked: create a
+    new one instead.
+
+    :param key: The key to rotate.
+    :param scopes: New scopes, or ``None`` to keep the current ones.
+    :param expires_at: New expiry; omit to keep the current one.
+    :param rate_limit: New rate limit; omit to keep the current one.
+    :raises ValueError: ``key`` is revoked.
+    """
+    if key.revoked_at is not None:
+        raise ValueError("a revoked API key cannot be rotated")
+    if rate_limit is not KEEP and rate_limit is not None:
+        validate_rate(str(rate_limit))
+    prefix = secrets.token_hex(6)
+    secret = secrets.token_urlsafe(32)
+    key.prefix = prefix
+    key.hashed_secret = _digest(secret)
+    fields = ["prefix", "hashed_secret"]
+    if scopes is not None:
+        key.scopes = sorted(set(scopes))
+        fields.append("scopes")
+    if expires_at is not KEEP:
+        key.expires_at = cast("datetime | None", expires_at)
+        fields.append("expires_at")
+    if rate_limit is not KEEP:
+        key.rate_limit = "" if rate_limit is None else str(rate_limit)
+        fields.append("rate_limit")
+    key.save(update_fields=fields)
+    return key, f"{KEY_PREFIX}_{prefix}_{secret}"
 
 
 def _parse(raw: str | None) -> tuple[str, str] | None:

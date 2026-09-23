@@ -57,9 +57,9 @@ key's scopes:
 
 | Key scopes | `orders:read` | `orders:write` | `invoices:read` |
 |---|---|---|---|
-| `["orders:read"]` | ✅ | ❌ 403 | ❌ 403 |
-| `["orders:*"]` | ✅ | ✅ | ❌ 403 |
-| `["*"]` | ✅ | ✅ | ✅ |
+| `["orders:read"]` | allowed | 403 | 403 |
+| `["orders:*"]` | allowed | allowed | 403 |
+| `["*"]` | allowed | allowed | allowed |
 
 Operations without `RequiresScope` accept any key. Requests authenticated another way
 (sessions, JWT) are refused on scoped operations unless `allow_unscoped=True`, because
@@ -102,13 +102,18 @@ From code or the command line:
 key, raw = create_api_key(
     user, "CI deploys", scopes=["orders:*"], expires_at=now() + timedelta(days=90)
 )
+rotated, new_raw = rotate_api_key(key, scopes=["orders:read"])  # same row, new secret
 revoke_api_key(key)
 ```
 
 ```bash
 manage.py devx_apikey create --user ada --name "CI deploys" --scope orders:read --scope orders:write --days 90
+manage.py devx_apikey rotate --prefix 3f9a1c2b7d4e --days 90
 manage.py devx_apikey revoke --prefix 3f9a1c2b7d4e
 ```
+
+`rotate_api_key` replaces the secret in place: the old value stops working immediately and
+the row keeps its owner, name and creation time. Omit a parameter to keep it.
 
 In the admin, keys can be searched, edited (name, scopes, rate limit, expiry) and revoked
 with the "Revoke selected API keys" action. They cannot be created there, because the raw

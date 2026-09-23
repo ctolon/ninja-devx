@@ -7,15 +7,20 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.utils import timezone
 
-from ninja_devx.contrib.apikeys.auth import create_api_key, revoke_api_key
+from ninja_devx.contrib.apikeys.auth import (
+    KEEP,
+    create_api_key,
+    revoke_api_key,
+    rotate_api_key,
+)
 from ninja_devx.contrib.apikeys.models import APIKey
 
 
 class Command(BaseCommand):
-    help = "Create or revoke scoped API keys."
+    help = "Create, revoke or rotate scoped API keys."
 
     def add_arguments(self, parser: CommandParser) -> None:
-        parser.add_argument("action", choices=["create", "revoke"], help="what to do")
+        parser.add_argument("action", choices=["create", "revoke", "rotate"], help="what to do")
         parser.add_argument("--user", help="username of the key owner (create)")
         parser.add_argument("--name", help="label of the key (create)")
         parser.add_argument(
@@ -32,6 +37,28 @@ class Command(BaseCommand):
                 raise CommandError("No key with that prefix")
             revoke_api_key(key)
             self.stdout.write(self.style.SUCCESS(f"Revoked {key}"))
+            return
+        if options["action"] == "rotate":
+            key = APIKey.objects.filter(prefix=str(options["prefix"])).first()
+            if key is None:
+                raise CommandError("No key with that prefix")
+            days = options["days"]
+            expiry: object = (
+                timezone.now() + timedelta(days=days) if isinstance(days, int) else KEEP
+            )
+            given_scopes: object = options["scope"]
+            scope_items: list[object] = (
+                cast("list[object]", given_scopes) if isinstance(given_scopes, list) else []
+            )
+            scopes = [str(scope) for scope in scope_items] or None
+            rate = str(options["rate"]) if options["rate"] else KEEP
+            try:
+                rotated, raw = rotate_api_key(
+                    key, scopes=scopes, expires_at=expiry, rate_limit=rate
+                )
+            except ValueError as exc:
+                raise CommandError(str(exc)) from exc
+            self.stdout.write(f"Rotated {rotated}; the key is shown once:\n{raw}")
             return
         username = options["user"]
         if not username or not options["name"]:

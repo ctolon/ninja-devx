@@ -21,7 +21,14 @@ from types import MappingProxyType
 from typing import Final, Literal, cast
 
 from . import source as _source
-from .openapi import Operation, Schema, named_multipart_bodies, read_operations, ref_name
+from .openapi import (
+    Operation,
+    Parameter,
+    Schema,
+    named_multipart_bodies,
+    read_operations,
+    ref_name,
+)
 from .openapi import as_list as _list
 from .openapi import as_mapping as _mapping
 from .openapi import as_strings as _strings
@@ -35,6 +42,12 @@ class UploadFile(NamedTuple):
     filename: str
     content: bytes
     content_type: str = "application/octet-stream"
+"""
+
+_COOKIE_RUNTIME = """\
+def _cookie_header(values: Mapping[str, object]) -> str | None:
+    parts = [f"{name}={value}" for name, value in values.items() if value is not None]
+    return "; ".join(parts) or None
 """
 
 _MULTIPART_RUNTIME = """\
@@ -131,6 +144,7 @@ def generate_python(
     if style == "pydantic":
         return _generate_pydantic(document, class_name=class_name)
     info = _mapping(document.get("info"))
+    operations = read_operations(document)
     parts = [
         "# ruff: noqa: E501",
         _source.literal(
@@ -140,7 +154,7 @@ def generate_python(
         "",
         "from __future__ import annotations",
         "",
-        "from collections.abc import Callable, Mapping",
+        _collections_import(operations),
         "from typing import Literal, NamedTuple, NotRequired, TypedDict, cast",
         "from urllib.parse import quote",
         "",
@@ -161,7 +175,8 @@ def generate_python(
         '    return cast("Mapping[str, object]", body or {})\n'
     )
     parts.append(_MULTIPART_RUNTIME)
-    operations = read_operations(document)
+    if _uses_cookies(operations):
+        parts.append(_COOKIE_RUNTIME)
     parts.append(_client(class_name, operations, asynchronous=False))
     parts.append(_client(f"Async{class_name}", operations, asynchronous=True))
     source = "\n".join(parts)
@@ -287,10 +302,23 @@ def _client(name: str, operations: list[Operation], *, asynchronous: bool) -> st
     return "\n".join(lines)
 
 
+def _declared_headers(header_params: list[Parameter], cookie_params: list[Parameter]) -> str:
+    entries = [f"{_source.literal(p.name)}: {_identifier(p.name)}" for p in header_params]
+    if cookie_params:
+        cookies = ", ".join(
+            f"{_source.literal(p.name)}: {_identifier(p.name)}" for p in cookie_params
+        )
+        entries.append(f'"Cookie": _cookie_header({{{cookies}}})')
+    return "{" + ", ".join(entries) + "}"
+
+
 def _method(operation: Operation, *, asynchronous: bool) -> list[str]:
+    if operation.streaming:
+        return _stream_method(operation, asynchronous=asynchronous, pydantic=False)
     path_params = [p for p in operation.parameters if p.location == "path"]
     query_params = [p for p in operation.parameters if p.location == "query"]
     header_params = [p for p in operation.parameters if p.location == "header"]
+    cookie_params = [p for p in operation.parameters if p.location == "cookie"]
     arguments = ["self"] + [f"{_identifier(p.name)}: {py_type(p.schema)}" for p in path_params]
     if operation.body is not None:
         default = "" if operation.body_required else " = None"
@@ -298,7 +326,9 @@ def _method(operation: Operation, *, asynchronous: bool) -> list[str]:
         arguments.append(f"body: {body_type}{default}")
     keyword_only = [
         f"{_identifier(p.name)}: {py_type(p.schema)}" + ("" if p.required else " | None = None")
-        for p in sorted([*query_params, *header_params], key=lambda p: not p.required)
+        for p in sorted(
+            [*query_params, *header_params, *cookie_params], key=lambda p: not p.required
+        )
     ]
     arguments.append("*")
     arguments.extend(keyword_only)
@@ -324,12 +354,10 @@ def _method(operation: Operation, *, asynchronous: bool) -> list[str]:
             call_arguments.extend(["data=_form_data", "files=_form_files"])
         else:
             call_arguments.append("json=body")
-    declared_headers = ", ".join(
-        f"{_source.literal(p.name)}: {_identifier(p.name)}" for p in header_params
-    )
     multipart = operation.body_media_type == "multipart/form-data"
     call_arguments.append(
-        f"headers=_headers({{{declared_headers}}}, request_headers, multipart={multipart})"
+        f"headers=_headers({_declared_headers(header_params, cookie_params)}, "
+        f"request_headers, multipart={multipart})"
     )
     prefix = "async def" if asynchronous else "def"
     awaited = "await " if asynchronous else ""
@@ -351,6 +379,50 @@ def _method(operation: Operation, *, asynchronous: bool) -> list[str]:
     return lines
 
 
+def _stream_method(operation: Operation, *, asynchronous: bool, pydantic: bool) -> list[str]:
+    """A server-sent-events method yielding decoded lines from ``text/event-stream``."""
+    type_fn = pydantic_type if pydantic else py_type
+    path_params = [p for p in operation.parameters if p.location == "path"]
+    query_params = [p for p in operation.parameters if p.location == "query"]
+    header_params = [p for p in operation.parameters if p.location == "header"]
+    cookie_params = [p for p in operation.parameters if p.location == "cookie"]
+    arguments = ["self"] + [f"{_identifier(p.name)}: {type_fn(p.schema)}" for p in path_params]
+    keyword_only = [
+        f"{_identifier(p.name)}: {type_fn(p.schema)}" + ("" if p.required else " | None = None")
+        for p in sorted(
+            [*query_params, *header_params, *cookie_params], key=lambda p: not p.required
+        )
+    ]
+    arguments.append("*")
+    arguments.extend(keyword_only)
+    arguments.append("request_headers: Mapping[str, str] | None = None")
+    params = ", ".join(f"{_source.literal(p.name)}: {_identifier(p.name)}" for p in query_params)
+    path_literal = _source.path_expression(
+        operation.path, {p.name: _identifier(p.name) for p in path_params}
+    )
+    call_arguments = [f'"{operation.method}"', path_literal]
+    if query_params:
+        call_arguments.append(f"params=_query({{{params}}})")
+    call_arguments.append(
+        f"headers=_headers({_declared_headers(header_params, cookie_params)}, request_headers)"
+    )
+    prefix = "async def" if asynchronous else "def"
+    result = "AsyncIterator[str]" if asynchronous else "Iterator[str]"
+    lines = _wrap(f"    {prefix} {_snake(operation.operation_id)}(", arguments, f") -> {result}:")
+    if operation.summary:
+        lines.append(f"        {_source.literal(operation.summary)}")
+    context = "async with" if asynchronous else "with"
+    lines += _wrap(f"        {context} self._client.stream(", call_arguments, ") as response:")
+    lines += [
+        "            response.raise_for_status()",
+        f"            {'async for' if asynchronous else 'for'} line in "
+        f"response.{'aiter_lines' if asynchronous else 'iter_lines'}():",
+        "                yield line",
+        "",
+    ]
+    return lines
+
+
 def _wrap(opening: str, items: list[str], closing: str) -> list[str]:
     """One line when it fits in 100 characters, else one item per line (ruff format style)."""
     line = f"{opening}{', '.join(items)}{closing}"
@@ -366,6 +438,17 @@ def _snake(value: str) -> str:
     if not name or name[0].isdigit():
         name = "operation_" + name
     return f"{name}_" if keyword.iskeyword(name) else name
+
+
+def _collections_import(operations: Sequence[Operation]) -> str:
+    names = ["Callable", "Mapping"]
+    if any(operation.streaming for operation in operations):
+        names = ["AsyncIterator", *names[:1], "Iterator", *names[1:]]
+    return f"from collections.abc import {', '.join(names)}"
+
+
+def _uses_cookies(operations: Sequence[Operation]) -> bool:
+    return any(p.location == "cookie" for operation in operations for p in operation.parameters)
 
 
 def _identifier(name: str) -> str:
@@ -385,6 +468,7 @@ def _identifier(name: str) -> str:
         "_jsonable",
         "_headers",
         "_header_value",
+        "_cookie_header",
         "_multipart",
         "_multipart_values",
         "_form_data",
@@ -501,6 +585,7 @@ def _decode(response: httpx.Response) -> object:
 
 def _generate_pydantic(document: Schema, *, class_name: str) -> str:
     info = _mapping(document.get("info"))
+    operations = read_operations(document)
     parts = [
         "# ruff: noqa: E501, N815",
         _source.literal(
@@ -512,7 +597,7 @@ def _generate_pydantic(document: Schema, *, class_name: str) -> str:
         "",
         "import datetime as _dt",
         "import uuid as _uuid",
-        "from collections.abc import Callable, Mapping",
+        _collections_import(operations),
         "from typing import Annotated, Literal, NamedTuple, cast",
         "from urllib.parse import quote",
         "",
@@ -543,7 +628,8 @@ def _generate_pydantic(document: Schema, *, class_name: str) -> str:
     return cast("Mapping[str, object]", body or {})
 """)
     parts.append(_MULTIPART_RUNTIME)
-    operations = read_operations(document)
+    if _uses_cookies(operations):
+        parts.append(_COOKIE_RUNTIME)
     adapters: dict[str, str] = {}
     sync_client = _pydantic_client(class_name, operations, adapters, asynchronous=False)
     async_client = _pydantic_client(f"Async{class_name}", operations, adapters, asynchronous=True)
@@ -567,7 +653,12 @@ def pydantic_type(schema: Schema) -> str:
             members = list(
                 dict.fromkeys(pydantic_type(_mapping(item)) for item in _list(schema[combinator]))
             )
-            return " | ".join(members)
+            union = " | ".join(members)
+            discriminator = _mapping(schema.get("discriminator"))
+            property_name = discriminator.get("propertyName")
+            if isinstance(property_name, str) and len(members) > 1:
+                return f"Annotated[{union}, _Field(discriminator={_source.literal(property_name)})]"
+            return union
     if "allOf" in schema:
         parts = _list(schema["allOf"])
         return pydantic_type(_mapping(parts[0])) if len(parts) == 1 else "dict[str, object]"
@@ -682,9 +773,12 @@ def _pydantic_client(
 def _pydantic_method(
     operation: Operation, adapters: dict[str, str], *, asynchronous: bool
 ) -> list[str]:
+    if operation.streaming:
+        return _stream_method(operation, asynchronous=asynchronous, pydantic=True)
     path_params = [p for p in operation.parameters if p.location == "path"]
     query_params = [p for p in operation.parameters if p.location == "query"]
     header_params = [p for p in operation.parameters if p.location == "header"]
+    cookie_params = [p for p in operation.parameters if p.location == "cookie"]
     arguments = ["self"] + [
         f"{_identifier(p.name)}: {pydantic_type(p.schema)}" for p in path_params
     ]
@@ -695,7 +789,9 @@ def _pydantic_method(
     keyword_only = [
         f"{_identifier(p.name)}: {pydantic_type(p.schema)}"
         + ("" if p.required else " | None = None")
-        for p in sorted([*query_params, *header_params], key=lambda p: not p.required)
+        for p in sorted(
+            [*query_params, *header_params, *cookie_params], key=lambda p: not p.required
+        )
     ]
     arguments.append("*")
     arguments.extend(keyword_only)
@@ -721,12 +817,10 @@ def _pydantic_method(
             call_arguments.extend(["data=_form_data", "files=_form_files"])
         else:
             call_arguments.append("json=_jsonable(body)")
-    declared_headers = ", ".join(
-        f"{_source.literal(p.name)}: {_identifier(p.name)}" for p in header_params
-    )
     multipart = operation.body_media_type == "multipart/form-data"
     call_arguments.append(
-        f"headers=_headers({{{declared_headers}}}, request_headers, multipart={multipart})"
+        f"headers=_headers({_declared_headers(header_params, cookie_params)}, "
+        f"request_headers, multipart={multipart})"
     )
     prefix = "async def" if asynchronous else "def"
     awaited = "await " if asynchronous else ""
@@ -791,6 +885,8 @@ def _validate(document: Schema, *, class_name: str, style: str) -> None:
         "list",
         "dict",
         "object",
+        "Iterator",
+        "AsyncIterator",
         "_BaseModel",
         "_TypeAdapter",
         "UploadFile",

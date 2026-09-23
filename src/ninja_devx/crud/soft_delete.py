@@ -15,11 +15,12 @@ The restore route is ``POST /{pk}/restore``; rename or remove it with ``routes``
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import ClassVar, Final, Generic
 
-from django.db.models import BooleanField, DateTimeField, Model, QuerySet
+from django.db.models import BooleanField, DateTimeField, Model, Q, QuerySet, UniqueConstraint
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -27,11 +28,12 @@ from .._internal.cache import owned_cache
 from ..exceptions import ControllerConfigError
 from ..routing.operations import OperationSpec, async_variant, post
 from ..security.auth import request_user
+from ..stamps import SoftDeletable
 from .annotations import Lookup
 from .controllers import OUT_SCHEMA, ModelController, ModelT, OutT
 from .fields import resolve_field
 
-__all__ = ["SoftDelete", "SoftDeleteMixin"]
+__all__ = ["SoftDelete", "SoftDeleteMixin", "soft_delete_unique"]
 
 
 class _Infer(Enum):
@@ -61,9 +63,12 @@ class SoftDelete:
     deleted_at: str | None = None
     """Also set this ``DateTimeField`` to now on delete (and clear it on restore)."""
     deleted_by: str | None = None
-    """Also set this foreign key to the current user on delete (and clear it on restore)."""
+    """Also set this foreign key to the current user on delete (and clear it on restore).
+    Defaults to ``"deleted_by"`` for models built on ``SoftDeletable``."""
 
     def resolved(self, model: type[Model], owner: str) -> _Resolved:
+        if self.deleted_by is None and issubclass(model, SoftDeletable):
+            return replace(self, deleted_by="deleted_by").resolved(model, owner)
         field = resolve_field(model, self.field)
         deleted, active = self.deleted, self.active
         if isinstance(field, BooleanField):
@@ -132,6 +137,9 @@ class SoftDeleteMixin(ModelController[ModelT], Generic[ModelT, OutT]):
 
     soft_delete: ClassVar[SoftDelete | str] = SoftDelete()
     """A ``SoftDelete`` or just the field name."""
+    soft_delete_cascade: ClassVar[Sequence[str]] = ()
+    """Related accessor names marked deleted/restored with this object
+    (``("comments", "attachments")``). Only the configured marker field is cascaded."""
 
     @classmethod
     def soft_delete_config(cls) -> _Resolved:
@@ -154,11 +162,26 @@ class SoftDeleteMixin(ModelController[ModelT], Generic[ModelT, OutT]):
         return super().scoped_queryset(request)
 
     def perform_destroy(self, request: HttpRequest, instance: ModelT) -> None:
-        self._write(instance, self.soft_delete_config().deleted_values(request))
+        resolved = self.soft_delete_config()
+        self._write(instance, resolved.deleted_values(request))
+        self._cascade(instance, resolved, deleted=True)
 
     def perform_restore(self, request: HttpRequest, instance: ModelT) -> ModelT:
-        self._write(instance, self.soft_delete_config().active_values())
+        resolved = self.soft_delete_config()
+        self._write(instance, resolved.active_values())
+        self._cascade(instance, resolved, deleted=False)
         return instance
+
+    def _cascade(self, instance: ModelT, resolved: _Resolved, *, deleted: bool) -> None:
+        names = type(self).soft_delete_cascade
+        if not names:
+            return
+        raw = resolved.deleted if deleted else resolved.active
+        value = raw() if callable(raw) else raw
+        field = resolved.config.field
+        for name in names:
+            manager = getattr(instance, name)
+            manager.all().update(**{field: value})
 
     @post("/{pk}/restore", response=OUT_SCHEMA)
     def restore(self, request: HttpRequest, pk: Lookup) -> ModelT:
@@ -180,3 +203,33 @@ class SoftDeleteMixin(ModelController[ModelT], Generic[ModelT, OutT]):
         for name, value in values.items():
             setattr(instance, name, value)
         instance.save(update_fields=list(values))
+
+
+def soft_delete_unique(
+    model: type[Model],
+    *fields: str,
+    config: SoftDelete | None = None,
+    name: str | None = None,
+) -> UniqueConstraint:
+    """A partial ``UniqueConstraint`` that only applies to active (not deleted) rows.
+
+    Add it to the model so a deleted row's value can be reused::
+
+        class Post(models.Model):
+            slug = models.SlugField()
+            deleted_at = models.DateTimeField(null=True)
+
+            class Meta:
+                constraints = [soft_delete_unique(Post, "slug")]
+
+    :param model: The model (used to resolve the marker field and its active value).
+    :param fields: The constrained fields.
+    :param config: The ``SoftDelete`` configuration (default: ``deleted_at``).
+    :param name: Constraint name (default derived from the table and fields).
+    """
+    if not fields:
+        raise ControllerConfigError("soft_delete_unique needs at least one field")
+    resolved = (config or SoftDelete()).resolved(model, "soft_delete_unique")
+    condition = Q(**resolved.active_filter())
+    label = name or f"uniq_active_{model._meta.db_table}_{'_'.join(fields)}"
+    return UniqueConstraint(fields=list(fields), condition=condition, name=label)

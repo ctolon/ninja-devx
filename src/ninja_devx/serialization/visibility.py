@@ -44,9 +44,12 @@ __all__ = [
     "FieldVisibility",
     "ResponseShape",
     "VisibleTo",
+    "WriteVisibleTo",
     "expandable_fields",
+    "forbidden_writes",
     "response_shape",
     "set_response_shape",
+    "write_markers",
 ]
 
 _NO_SOURCE: Final = object()
@@ -58,7 +61,7 @@ _SOURCE_ATTR: Final = "__ninja_devx_source__"
 def _checks_objects(permission: AnyPermission) -> bool:
     if permission.combinator is not None:
         return any(_checks_objects(child) for child in permission.operands)
-    check: object = getattr(type(permission), "has_object_permission")  # noqa: B009
+    check: object = getattr(type(permission), "has_object_permission")  # noqa: B009 - typed as object
     return check is not vars(BasePermission)["has_object_permission"]
 
 
@@ -137,6 +140,61 @@ class VisibleTo:
             serialize, is_field_serializer=True, info_arg=True, schema=schema
         )
         return cast("core_schema.CoreSchema", {**schema, "serialization": serialization})
+
+
+@dataclass(frozen=True, slots=True)
+class WriteVisibleTo:
+    """A field only some callers may write; checked by model controllers before persisting.
+
+    Use request-level permissions (``IsStaff``, a policy on ``request``); object-level
+    checks fail closed because the object is not known when the payload arrives::
+
+        class ArticleIn(Schema):
+            title: str
+            featured: Annotated[bool, WriteVisibleTo(IsStaff())] = False
+
+    A non-staff create or update that sends ``featured`` is rejected with 403.
+    """
+
+    permissions: tuple[BasePermission[Never], ...]
+
+    def __init__(self, *permissions: BasePermission[Never]) -> None:
+        """
+        :param permissions: All must allow the request, or the field is rejected.
+        """
+        if not permissions:
+            raise TypeError("WriteVisibleTo needs at least one permission")
+        object.__setattr__(self, "permissions", permissions)
+
+    def allows(self, request: HttpRequest | None) -> bool:
+        if request is None:
+            return False  # no request: fail closed
+        return all(_allows(permission, request, _NO_SOURCE) for permission in self.permissions)
+
+
+def write_markers(schema: type[object]) -> dict[str, WriteVisibleTo]:
+    """``{field name: WriteVisibleTo}`` of an input schema."""
+    fields: Mapping[str, FieldInfo] = getattr(schema, "model_fields", {})
+    return {
+        name: item
+        for name, info in fields.items()
+        for item in info.metadata
+        if isinstance(item, WriteVisibleTo)
+    }
+
+
+def forbidden_writes(schema: type[object], sent: object, request: HttpRequest | None) -> set[str]:
+    """Names of ``sent`` fields the caller may not write for ``schema``.
+
+    :param schema: The input schema.
+    :param sent: Field names actually submitted.
+    :param request: The current request.
+    """
+    markers = write_markers(schema)
+    if not markers:
+        return set()
+    names = {str(name) for name in cast("Mapping[object, object]", sent)}
+    return {name for name in names if name in markers and not markers[name].allows(request)}
 
 
 @dataclass(frozen=True, slots=True)

@@ -49,6 +49,8 @@ from ..http.conditional import (
     remember_etag,
     representation_tag,
 )
+from ..http.explain import QUERY_PLAN_ATTR
+from ..layers.errors import PermissionDenied
 from ..layers.repository import ModelRepository
 from ..layers.selectors import Selector
 from ..layers.services import ModelService
@@ -60,7 +62,10 @@ from ..security.auth import arequest_user, request_user
 from ..security.object_permissions import ObjectPermissions
 from ..security.permissions import IsAuthenticated, IsOwner
 from ..security.tenancy import TenantResolver, acurrent_tenant_for, current_tenant_for
+from ..serialization.examples import with_examples
 from ..serialization.schemas import Patch, PatchData
+from ..serialization.visibility import expandable_fields, forbidden_writes
+from ..stamps import UserStamped
 from .annotations import (
     Filters,
     Lookup,
@@ -73,10 +78,17 @@ from .annotations import (
 from .fields import resolve_field
 from .filters import FilterFields
 from .nested import Parent, get_parent, parent_bindings
-from .optimization import optimize_queryset
+from .optimization import (
+    ExpandRule,
+    expand_limit_target,
+    optimize_queryset,
+    query_plan,
+    resolve_expand_attribute,
+)
 from .pagination import CursorPagination
-from .persistence import model_field, unknown_fields
+from .persistence import changed_fields, model_field, unknown_fields
 from .scoping import expanded_fields, scoped_queryset
+from .search import SearchBackend
 from .shaping import partial_schema, shape_bindings
 from .writes import database_for_write, write_scope
 
@@ -160,7 +172,15 @@ class ModelController(Controller, Generic[ModelT]):
     """Re-fetch through ``scoped_queryset()`` after writes so responses see its joins."""
     optimize_queries: ClassVar[bool | Literal["only"]] = True
     """Join/prefetch what the output schema renders; ``"only"`` also restricts columns."""
-    """Derive ``select_related``/``prefetch_related`` from the output schema."""
+    related: ClassVar[Sequence[str]] = ()
+    """Explicit lookups the N+1 planner always loads (``("author", "comments__user")``),
+    for resolvers or properties it cannot analyse. Also set with ``@requires_related``."""
+    expand_rules: ClassVar[Mapping[str, ExpandRule]] = MappingProxyType({})
+    """How an expanded to-many relation is loaded (``{"comments": ExpandRule(limit=5)}``); keys
+    must be ``Expandable`` fields of the output schema."""
+    openapi_examples: ClassVar[bool] = False
+    """Fill an OpenAPI example into the input and output schemas from
+    ``ninja_devx.testing.sample`` (see ``ninja_devx.serialization.examples.with_examples``)."""
 
     # --- Configuration -----------------------------------------------------------------
 
@@ -191,6 +211,19 @@ class ModelController(Controller, Generic[ModelT]):
         schema = type_arguments(cls).get(InT)
         return schema if isinstance(schema, type) and issubclass(schema, BaseModel) else None
 
+    def check_write_visibility(
+        self, request: HttpRequest, schema: type[BaseModel] | None, sent: object
+    ) -> None:
+        """Reject writes to fields the caller may not set (``WriteVisibleTo``)."""
+        if schema is None:
+            return
+        forbidden = forbidden_writes(schema, sent, request)
+        if forbidden:
+            raise PermissionDenied(
+                "Fields may not be written: " + ", ".join(sorted(forbidden)),
+                fields=sorted(forbidden),
+            )
+
     @classmethod
     def merged_options(cls, overrides: ControllerOptions | None = None) -> ControllerOptions:
         merged = super().merged_options(overrides)
@@ -214,6 +247,12 @@ class ModelController(Controller, Generic[ModelT]):
         if has_lookup(spec.path, cls):
             spec = replace(spec, path=with_path_converter(spec.path, cls))
         output = cls.output_schema()
+        if cls.expand_rules:
+            _validate_expand_rules(cls, output)
+        if cls.openapi_examples:
+            for schema in (cls.input_schema(), output):
+                if schema is not None:
+                    with_examples(schema)
         response = spec.options.get("response")
         if cls.sparse_fields and name in {"list", "retrieve"} and output and response is not None:
             # ``?fields=`` may leave any field out: document the response as partial
@@ -403,7 +442,7 @@ class ModelController(Controller, Generic[ModelT]):
         return service
 
     def context_data(self, request: HttpRequest) -> dict[str, object]:
-        """Fields set from the request on create: the tenant, the owner and the parent."""
+        """Fields set from the request on create: tenant, owner, parent and user stamps."""
         cls = type(self)
         data: dict[str, object] = {}
         if cls.tenant_field is not None and "__" not in cls.tenant_field:
@@ -415,15 +454,46 @@ class ModelController(Controller, Generic[ModelT]):
             data[cls.owner_field] = user
         if cls.parent is not None:
             data[cls.parent.field] = get_parent(request)
+        if issubclass(cls.get_model(), UserStamped):
+            user = request_user(request)
+            data["created_by"] = user
+            data["updated_by"] = user
         return data
+
+    def update_context_data(self, request: HttpRequest) -> dict[str, object]:
+        """Fields set from the request on every update: ``updated_by`` for stamped models."""
+        if issubclass(type(self).get_model(), UserStamped):
+            return {"updated_by": request_user(request)}
+        return {}
 
     def perform_update(
         self, request: HttpRequest, instance: ModelT, data: Mapping[str, object]
     ) -> ModelT:
-        return self.get_service(request).update(instance, data)
+        """Update through the service with the data plus ``update_context_data``."""
+        stamps = self.update_context_data(request)
+        return self.get_service(request).update(instance, {**data, **stamps} if stamps else data)
+
+    def on_change(
+        self, request: HttpRequest, instance: ModelT, changes: Mapping[str, tuple[object, object]]
+    ) -> None:
+        """After a successful update, inside the transaction: ``changes`` maps field name to
+        ``(old, new)`` (see ``changed_fields``). No-op by default."""
 
     def perform_destroy(self, request: HttpRequest, instance: ModelT) -> None:
         self.get_service(request).delete(instance)
+
+    @classmethod
+    def _related_hints(cls, schema: type[BaseModel] | None) -> tuple[str, ...]:
+        hints: list[str] = list(cls.related)
+        if schema is not None:
+            for name in schema.model_fields:
+                resolver = getattr(schema, f"resolve_{name}", None)
+                found: tuple[str, ...] = getattr(resolver, "__ninja_devx_related__", ())
+                if not found:
+                    function = getattr(resolver, "__func__", None)
+                    found = getattr(function, "__ninja_devx_related__", ())
+                hints.extend(found)
+        return tuple(dict.fromkeys(hints))
 
     @classmethod
     def checks(cls, container: ContainerLike | None = None) -> list[CheckMessage]:
@@ -459,6 +529,34 @@ class ModelController(Controller, Generic[ModelT]):
                             "know it may be missing or null.",
                             obj=cls,
                             id="ninja_devx.W005",
+                        )
+                    )
+        for lookup in cls._related_hints(schema):
+            head = lookup.split("__", 1)[0]
+            if model_field(model, head) is None:
+                messages.append(
+                    Warning(
+                        f"{cls.__qualname__}: related hint {lookup!r} is not a relation of "
+                        f"{model.__name__}",
+                        hint="Use a relation path such as 'author' or 'comments__user'.",
+                        obj=cls,
+                        id="ninja_devx.W006",
+                    )
+                )
+        if schema is not None:
+            for name, rule in cls.expand_rules.items():
+                if rule.limit is None:
+                    continue
+                attribute = resolve_expand_attribute(schema, name)
+                if expand_limit_target(model, attribute) is None:
+                    messages.append(
+                        Warning(
+                            f"{cls.__qualname__}: expand_rules[{name!r}].limit cannot be applied "
+                            f"to {model.__name__}.{attribute}",
+                            hint="limit needs a plain reverse foreign key; a many-to-many or "
+                            "similar relation is prefetched without a cap.",
+                            obj=cls,
+                            id="ninja_devx.W007",
                         )
                     )
         service_class = cls.service_class
@@ -515,6 +613,20 @@ class ModelController(Controller, Generic[ModelT]):
             )
 
 
+def _validate_expand_rules(
+    cls: type[ModelController[ModelT]], schema: type[BaseModel] | None
+) -> None:
+    if schema is None:
+        raise ControllerConfigError(f"{cls.__qualname__}.expand_rules needs an output schema")
+    expandable = expandable_fields(schema)
+    for name in cls.expand_rules:
+        if name not in expandable:
+            raise ControllerConfigError(
+                f"{cls.__qualname__}.expand_rules key {name!r} is not an Expandable field of "
+                f"{schema.__name__}"
+            )
+
+
 async def _warm_content_type(model: type[Model]) -> None:
     """Fill Django's content type cache off the event loop (object permission queries use it)."""
     from django.contrib.contenttypes.models import ContentType
@@ -533,6 +645,8 @@ class ListConfig(ModelController[ModelT], Generic[ModelT, OutT]):
     """An explicit Ninja ``FilterSchema`` for ``GET /`` (instead of generated filters)."""
     search_fields: ClassVar[Sequence[str]] = ()
     """Fields searched with ``icontains`` by the ``search_param`` query parameter."""
+    search_backend: ClassVar[SearchBackend[Model] | None] = None
+    """Replace the default ``icontains`` search (for example ``PostgresSearch()``)."""
     search_param: ClassVar[str] = "search"
     """Name of the search query parameter."""
     filter_fields: ClassVar[FilterFields] = MappingProxyType({})
@@ -603,8 +717,16 @@ class ListConfig(ModelController[ModelT], Generic[ModelT, OutT]):
         schema = type(self).output_schema()
         optimize = class_setting(type(self), "optimize_queries", get_settings().optimize_queries)
         if schema is not None and optimize:
+            expand = expanded_fields(request, schema)
+            plan = query_plan(queryset.model, schema, expand, type(self).related)
+            request.__dict__[QUERY_PLAN_ATTR] = plan.lookups()
             queryset = optimize_queryset(
-                queryset, schema, only=optimize == "only", expand=expanded_fields(request, schema)
+                queryset,
+                schema,
+                only=optimize == "only",
+                expand=expand,
+                hints=type(self).related,
+                rules=type(self).expand_rules,
             )
         return self.order_queryset(queryset, ordering)
 
@@ -615,6 +737,12 @@ class ListConfig(ModelController[ModelT], Generic[ModelT, OutT]):
         filters: FilterSchema,
         ordering: OrderingSchema,
     ) -> QuerySet[ModelT]:
+        backend = type(self).search_backend
+        term: object = getattr(filters, type(self).search_param, None)
+        if backend is not None and isinstance(term, str) and term:
+            queryset = cast(
+                "QuerySet[ModelT]", backend.search(queryset, term, type(self).search_fields)
+            )
         return self.order_queryset(filters.filter(queryset), ordering)
 
     def order_queryset(
@@ -741,6 +869,9 @@ class CreateMixin(CreateHooks[ModelT, InT], Generic[ModelT, OutT, InT]):
         return Status(201, await self.run_sync(self._create, request, payload))  # one hop
 
     def _create(self, request: HttpRequest, payload: InT) -> ModelT:
+        self.check_write_visibility(
+            request, type(payload), getattr(payload, "model_fields_set", ())
+        )
         with write_scope(self, request):
             return self.refresh(request, self.perform_create(request, payload))
 
@@ -770,12 +901,16 @@ class UpdateMixin(ModelController[ModelT], Generic[ModelT, OutT, InT]):
 
     def _update(self, request: HttpRequest, lookup: object, data: Mapping[str, object]) -> ModelT:
         """Load, update and reload in one go (one thread hop in async mode)."""
+        self.check_write_visibility(request, type(self).input_schema(), data)
         # Hold the write connection's row lock from the current-version read through
         # persistence. An atomic block alone does not protect a stale earlier read.
         with write_scope(self, request):
             instance = self.get_object(request, lookup, lock=type(self).etag is not None)
             self.check_preconditions(request, instance)
+            changes = changed_fields(instance, data)
             updated = self.refresh(request, self.perform_update(request, instance, data))
+            if changes:
+                self.on_change(request, updated, changes)
             return self.written(request, updated)
 
     @classmethod

@@ -215,3 +215,150 @@ def test_command_python_styles(tmp_path):
             "--python-style", style, "--output", str(output),
         )  # fmt: skip
         assert marker in output.read_text()
+
+
+def _mini_document(paths, schemas=None):
+    return {
+        "openapi": "3.1.0",
+        "info": {"title": "Mini", "version": "1"},
+        "paths": paths,
+        "components": {"schemas": schemas or {}},
+    }
+
+
+def _json_response(schema):
+    return {"200": {"description": "ok", "content": {"application/json": {"schema": schema}}}}
+
+
+def test_cookie_parameter_is_sent(tmp_path):
+    document = _mini_document(
+        {
+            "/whoami": {
+                "get": {
+                    "operationId": "whoami",
+                    "parameters": [
+                        {
+                            "name": "session",
+                            "in": "cookie",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": _json_response({"type": "object"}),
+                }
+            }
+        }
+    )
+    module = load_client(tmp_path, generate_python(document))
+    seen = {}
+    client = module.ApiClient(
+        client=httpx.Client(
+            base_url="https://example.test",
+            transport=httpx.MockTransport(
+                lambda request: (
+                    seen.update(request.headers),
+                    httpx.Response(200, json={"ok": True}),
+                )[1]
+            ),
+        )
+    )
+    client.whoami(session="abc")
+    assert seen["cookie"] == "session=abc"
+
+
+def test_multipart_body_without_a_file_generates(tmp_path):
+    document = _mini_document(
+        {
+            "/upload": {
+                "post": {
+                    "operationId": "upload",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "multipart/form-data": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}},
+                                    "required": ["name"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": _json_response({"type": "object"}),
+                }
+            }
+        }
+    )
+    module = load_client(tmp_path, generate_python(document))
+    assert "multipart" in generate_python(document)
+    assert generate_typescript(document).count("multipart") >= 1
+    assert module.MultipartBody0(name="x").name == "x"
+
+
+def test_streaming_response_generates_a_line_iterator(tmp_path):
+    document = _mini_document(
+        {
+            "/events": {
+                "get": {
+                    "operationId": "events",
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+                        }
+                    },
+                }
+            }
+        }
+    )
+    source = generate_python(document)
+    assert "Iterator[str]" in source
+    assert "async with self._client.stream(" in source
+    assert "aiter_lines" in source
+    with pytest.raises(ValueError, match="streaming"):
+        generate_typescript(document)
+
+
+def test_discriminator_generates_a_tagged_union():
+    document = _mini_document(
+        {
+            "/pet": {
+                "get": {
+                    "operationId": "pet",
+                    "responses": _json_response({"$ref": "#/components/schemas/Pet"}),
+                }
+            }
+        },
+        schemas={
+            "Cat": {
+                "type": "object",
+                "properties": {"kind": {"type": "string"}, "meow": {"type": "boolean"}},
+                "required": ["kind", "meow"],
+            },
+            "Dog": {
+                "type": "object",
+                "properties": {"kind": {"type": "string"}, "bark": {"type": "boolean"}},
+                "required": ["kind", "bark"],
+            },
+            "Pet": {
+                "oneOf": [
+                    {"$ref": "#/components/schemas/Cat"},
+                    {"$ref": "#/components/schemas/Dog"},
+                ],
+                "discriminator": {"propertyName": "kind"},
+            },
+        },
+    )
+    source = generate_python(document)
+    assert 'discriminator="kind"' in source
+    assert "Cat | Dog" in generate_typescript(document)
+
+
+def test_helpers_for_cookies_and_streaming_are_emitted_only_when_used():
+    plain = _mini_document(
+        {"/ping": {"get": {"operationId": "ping", "responses": _json_response({"type": "object"})}}}
+    )
+    for source in (generate_python(plain), generate_python(plain, style="typeddict")):
+        assert "_cookie_header" not in source
+        assert "Iterator" not in source
+    assert "cookieHeader" not in generate_typescript(plain)

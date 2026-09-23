@@ -18,13 +18,14 @@ combination was exercised in a given run.
 
 ## Versioning
 
-The current **0.0.1** tree has not been released; APIs may change before its first
-publication. The following policy applies to published releases.
+**0.0.2** is the current alpha release and APIs may change between minor releases before
+1.0. The following policy applies to published releases.
 
 ninja-devx follows [semantic versioning](https://semver.org). Before 1.0, a minor release
 (`0.x` → `0.x+1`) may contain breaking changes, and the changelog lists them with
-migration notes. Patch releases aim to preserve the public API; necessary security changes are documented. The definitions below apply from 0.0.1;
-the deprecation policy becomes binding at 1.0:
+migration notes. Patch releases aim to preserve the public API. Necessary security changes
+are documented. The definitions below apply from 0.0.1; the deprecation policy becomes
+binding at 1.0:
 
 - **Public API** means every name exported from `ninja_devx`, `ninja_devx.crud`,
   `ninja_devx.layers`, `ninja_devx.testing.clients`, `ninja_devx.contrib.*` and
@@ -62,7 +63,7 @@ and release gates.
 
 ## API stability areas
 
-All areas are alpha before the first release. The intended public surfaces are:
+The intended public surfaces are:
 
 | Area | Surface and change policy |
 |---|---|

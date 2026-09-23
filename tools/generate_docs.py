@@ -629,6 +629,20 @@ def pages() -> list[Page]:
                 ),
                 Signature(f"{ops}:async_variant"),
                 Signature("ninja_devx.routing.use_cases:use_case"),
+                Signature("ninja_devx.routing.use_cases:use_query"),
+                Classes(
+                    "CQRS building blocks",
+                    [
+                        "ninja_devx.cqrs.messages:Message",
+                        "ninja_devx.cqrs.messages:Command",
+                        "ninja_devx.cqrs.messages:Query",
+                        "ninja_devx.cqrs.events:DomainEvent",
+                        "ninja_devx.cqrs.events:EventBus",
+                        "ninja_devx.cqrs.unit_of_work:UnitOfWork",
+                    ],
+                ),
+                Classes("Application plugins", ["ninja_devx.plugins:APIPlugin"]),
+                Signature("ninja_devx.plugins:install"),
                 Signature("ninja_devx.routing.mounting:mount"),
                 Attributes("ninja_devx.routing.mounting:Mount"),
                 Attributes("ninja_devx.routing.hooks:OperationInfo"),
@@ -650,19 +664,75 @@ def pages() -> list[Page]:
                     f"{crud}:ListConfig",
                     title="List options (`ListMixin`, `ReadOnlyModelController`, `CRUDController`)",
                 ),
+                Attributes("ninja_devx.crud.optimization:ExpandRule"),
                 Attributes(
                     "ninja_devx.crud.auto:AutoSchemas",
                     title="Generated schemas (`AutoCRUDController`, `AutoReadOnlyController`)",
                 ),
                 Signature("ninja_devx.crud.auto:model_schemas"),
                 Attributes("ninja_devx.crud.bulk:_BulkBase", title="Bulk options (`Bulk*Mixin`)"),
+                Attributes("ninja_devx.crud.bulk:BulkErrorDetail"),
+                Text(
+                    """
+                    `BulkResultOut`: `{"results": [{"index", "status", "data"} |
+                    {"index", "status", "errors"}]}`, the body of a partial-success (207) bulk
+                    response from `bulk_partial=True`; `errors` uses `BulkErrorDetail`, and the
+                    response carries an `X-Bulk-Failed` count header.
+                    """
+                ),
+                Attributes("ninja_devx.crud.nested_writes:NestedWritesMixin"),
+                Attributes("ninja_devx.crud.nested_writes:Nested"),
+                Attributes("ninja_devx.crud.transitions:TransitionsMixin"),
+                Attributes("ninja_devx.crud.transitions:Transition"),
+                Text(
+                    """
+                    ### `MetaMixin` (`GET /meta`)
+
+                    Describes the input and output schemas for a form or admin UI: field
+                    types, required/read-only, max length and enum choices, plus
+                    `filter_fields`, `ordering_fields` and `search_fields`. No configuration.
+                    """
+                ),
+                Classes(
+                    "`MetaMixin` schemas",
+                    [
+                        "ninja_devx.crud.meta:ControllerMeta",
+                        "ninja_devx.crud.meta:FieldMeta",
+                        "ninja_devx.crud.meta:ChoiceOut",
+                    ],
+                ),
+                Attributes("ninja_devx.crud.aggregates:AggregateMixin"),
                 Attributes("ninja_devx.crud.transfer:ExportMixin"),
                 Attributes("ninja_devx.crud.transfer:ImportMixin"),
                 Attributes("ninja_devx.crud.sharing:ObjectSharingMixin"),
                 Attributes("ninja_devx.crud.soft_delete:SoftDeleteMixin"),
                 Attributes("ninja_devx.crud.soft_delete:SoftDelete"),
+                Signature("ninja_devx.crud.soft_delete:soft_delete_unique"),
+                Text(
+                    """
+                    ### Model bases (`ninja_devx.models`)
+
+                    Abstract models for bookkeeping columns; controllers fill the user columns.
+
+                    | Base | Columns | Notes |
+                    |---|---|---|
+                    | `TimeStamped` | `created_at`, `updated_at` | `auto_now_add`/`auto_now`; `created_at` is indexed |
+                    | `UserStamped` | `created_by`, `updated_by` | nullable `AUTH_USER_MODEL` keys (`SET_NULL`), set from the request user on create and update |
+                    | `Stamped` | all of the above | |
+                    | `SoftDeletable` | `deleted_at`, `deleted_by` | the defaults `SoftDeleteMixin` uses without a `soft_delete` configuration |
+
+                    Every column is `editable=False` and is left out of generated input schemas.
+                    """
+                ),
                 Attributes("ninja_devx.crud.nested:Parent"),
                 Attributes("ninja_devx.http.conditional:ETag"),
+                Classes(
+                    "Search backends",
+                    [
+                        "ninja_devx.crud.search:IContainsSearch",
+                        "ninja_devx.crud.search:PostgresSearch",
+                    ],
+                ),
                 Text(
                     """
                     ### `LimitOffsetPagination`
@@ -673,7 +743,7 @@ def pages() -> list[Page]:
                     |---|---|---|---|
                     | `limit` | `int` | `100` | page size when the client sends no `?limit=` |
                     | `max_limit` | `int` | `1000` | upper bound for `?limit=` |
-                    | `count` | `bool` | `True` | run `COUNT(*)` for `count`; `False` returns `null` (cheap on big tables) |
+                    | `count` | `bool \\| Literal["estimate"] \\| int` | `True` | `True`: exact `COUNT(*)`. `False`: no count query, `null`, one extra row fetched instead. `"estimate"`: `pg_class.reltuples` on PostgreSQL for an unfiltered queryset, exact otherwise. `N`: exact up to `N` rows, then `N` with `X-Total-Count: N+` |
                     | `max_offset` | `int \\| None` | `None` | reject deeper `?offset=` with 422 |
 
                     Query parameters: `limit`, `offset`. The response is
@@ -742,8 +812,9 @@ def pages() -> list[Page]:
                 Classes(
                     "Object permission backends",
                     [
-                        f"ninja_devx.security.object_permissions:{name}"
-                        for name in ("GrantsBackend", "GuardianBackend", "DjangoBackend")
+                        "ninja_devx.contrib.grants.backends:GrantsBackend",
+                        "ninja_devx.security.object_permissions:GuardianBackend",
+                        "ninja_devx.security.object_permissions:DjangoBackend",
                     ],
                 ),
                 *(
@@ -758,7 +829,20 @@ def pages() -> list[Page]:
                     )
                 ),
                 Signature("ninja_devx.serialization.visibility:VisibleTo"),
+                Signature("ninja_devx.serialization.visibility:WriteVisibleTo"),
                 Attributes("ninja_devx.serialization.visibility:Expandable"),
+                Text(
+                    """
+                    ### `Sensitive`
+
+                    Field metadata: `Annotated[str, Sensitive()]`. Carries no configuration;
+                    masked by `ExportMixin`, `mask_validation_input` and `AuditPrivacy`. See
+                    [Operations](../guide/operations.md#sensitive-fields).
+                    """
+                ),
+                Signature("ninja_devx.serialization.privacy:sensitive_fields"),
+                Signature("ninja_devx.serialization.privacy:mask"),
+                Signature("ninja_devx.serialization.privacy:redact_payload"),
             ],
         ),
         Page(
@@ -829,6 +913,14 @@ def pages() -> list[Page]:
                         )
                     ],
                 ),
+                Signature("ninja_devx.http.throttling:parse_rate"),
+                Classes(
+                    "Throttle storage (`RateThrottle(storage=...)`, `NINJA_DEVX['THROTTLE_STORAGE']`)",
+                    [
+                        "ninja_devx.http.throttling:ThrottleStorage",
+                        "ninja_devx.http.throttling:CacheThrottleStorage",
+                    ],
+                ),
                 Signature("ninja_devx.idempotency.policy:idempotent"),
             ],
         ),
@@ -850,10 +942,30 @@ def pages() -> list[Page]:
                     [
                         "ninja_devx.http.middleware:ServerTimingMiddleware",
                         "ninja_devx.http.middleware:RateLimitHeadersMiddleware",
+                        "ninja_devx.http.security:SecurityHeadersMiddleware",
+                        "ninja_devx.http.cache:ResponseCacheMiddleware",
+                        "ninja_devx.http.hardening:MaxBodySizeMiddleware",
+                        "ninja_devx.http.hardening:EnforceContentTypeMiddleware",
+                        "ninja_devx.http.hardening:JsonDepthMiddleware",
+                        "ninja_devx.http.pagination_headers:PaginationHeadersMiddleware",
                         "ninja_devx.contrib.otel:OpenTelemetryMetricsMiddleware",
                     ],
                 ),
+                Signature("ninja_devx.http.cache:invalidate_cache"),
                 Signature("ninja_devx.http.middleware:record_rate_limit"),
+                Signature(
+                    "ninja_devx.http.explain:QueryExplainMiddleware",
+                    display="QueryExplainMiddleware",
+                ),
+                Attributes("ninja_devx.http.versioning:VersionedResponseMixin"),
+                Signature(
+                    "ninja_devx.http.versioning:VersionedResponseMiddleware",
+                    display="VersionedResponseMiddleware",
+                ),
+                Attributes("ninja_devx.http.requestlog:RequestLogMiddleware"),
+                Attributes("ninja_devx.http.requestlog:RequestLogPlugin"),
+                Signature("ninja_devx.http.requestlog:register_api_key_reader"),
+                Classes("Log formatting", ["ninja_devx.http.requestlog:JSONFormatter"]),
                 Attributes("ninja_devx.http.health:HealthController"),
                 Classes(
                     "Health checks",
@@ -869,11 +981,15 @@ def pages() -> list[Page]:
         ),
         Page(
             "contrib",
-            "API keys, audit log, webhooks and uploads",
+            "API keys, audit log, webhooks, uploads and jobs",
             """
-            The optional Django apps in `ninja_devx.contrib`. Add the app to `INSTALLED_APPS`
-            and migrate. See [API keys](../guide/api-keys.md), [Audit log](../guide/audit.md),
-            [Webhooks](../guide/webhooks.md) and [Uploads](../guide/uploads.md).
+            The optional Django apps and adapters in `ninja_devx.contrib`. The apps
+            (`apikeys`, `audit`, `webhooks`, `uploads`, `jobs`) need `INSTALLED_APPS` and a
+            migration; `redis_throttle` and `nplusone` are adapters with no app of their own.
+            See [API keys](../guide/api-keys.md), [Audit log](../guide/audit.md),
+            [Webhooks](../guide/webhooks.md), [Uploads](../guide/uploads.md),
+            [Jobs](../guide/jobs.md), [Operations](../guide/operations.md) and
+            [N+1 detection and devx_doctor](../guide/doctor.md).
             """,
             [
                 Text("## API keys (`ninja_devx.contrib.apikeys`)"),
@@ -896,6 +1012,7 @@ def pages() -> list[Page]:
                 Attributes("ninja_devx.contrib.apikeys.api:APIKeyController"),
                 Text("## Audit log (`ninja_devx.contrib.audit`)"),
                 Attributes("ninja_devx.contrib.audit.log:AuditMixin"),
+                Attributes("ninja_devx.contrib.audit.privacy:AuditPrivacy"),
                 Signature("ninja_devx.contrib.audit.log:record"),
                 Signature("ninja_devx.contrib.audit.log:snapshot"),
                 Signature("ninja_devx.contrib.audit.log:diff"),
@@ -923,6 +1040,63 @@ def pages() -> list[Page]:
                 Attributes("ninja_devx.contrib.uploads.backends:S3Signer"),
                 Classes("Test signer", ["ninja_devx.contrib.uploads.backends:FakeSigner"]),
                 Signature("ninja_devx.contrib.uploads.api:safe_filename"),
+                Text("## Jobs (`ninja_devx.contrib.jobs`)"),
+                Text(
+                    """
+                    `JobsController`: `GET /` (the caller's jobs, paginated), `GET /{id}` and
+                    `POST /{id}/cancel`. Mount next to the endpoints that call `start_job`.
+                    Maintain with `manage.py devx_jobs prune`/`retry` (see
+                    [Commands](commands.md)).
+                    """
+                ),
+                Attributes("ninja_devx.contrib.jobs.api:JobOut"),
+                Signature("ninja_devx.contrib.jobs.runner:start_job"),
+                Signature("ninja_devx.contrib.jobs.runner:run_job"),
+                Signature("ninja_devx.contrib.jobs.runner:accepted"),
+                Signature("ninja_devx.contrib.jobs.runner:job"),
+                Signature("ninja_devx.contrib.jobs.runner:resolve_job"),
+                Signature("ninja_devx.contrib.jobs.runner:JobContext", display="JobContext"),
+                Text("## Redis throttle storage (`ninja_devx.contrib.redis_throttle`)"),
+                Classes(
+                    "Throttle storage", ["ninja_devx.contrib.redis_throttle:RedisThrottleStorage"]
+                ),
+                Text("## N+1 detection (`ninja_devx.contrib.nplusone`)"),
+                Text(
+                    """
+                    An adapter over [django-zeal](https://github.com/taobojlen/django-zeal)
+                    (the `zeal` extra): add `NPlusOnePlugin()`/`NPlusOneMiddleware()` so every
+                    request runs inside zeal's tracking context, and its errors are rewritten
+                    to name the controller and the fix. A no-op when `django-zeal` is not
+                    installed.
+                    """
+                ),
+                Classes(
+                    "N+1 middleware",
+                    [
+                        "ninja_devx.contrib.nplusone:NPlusOneMiddleware",
+                        "ninja_devx.contrib.nplusone:NPlusOnePlugin",
+                    ],
+                ),
+                Signature("ninja_devx.contrib.nplusone:explain_n_plus_one"),
+                Signature("ninja_devx.contrib.nplusone:zeal_installed"),
+                Signature("ninja_devx.contrib.nplusone:zeal_strict"),
+                Text("## Task queue adapters (`ninja_devx.contrib.tasks`)"),
+                Classes(
+                    "Task queues",
+                    [
+                        f"ninja_devx.contrib.tasks:{name}"
+                        for name in (
+                            "CeleryTaskQueue",
+                            "DramatiqTaskQueue",
+                            "RQTaskQueue",
+                            "TaskiqTaskQueue",
+                            "TemporalTaskQueue",
+                            "FastStreamTaskQueue",
+                            "FrameworkTaskQueue",
+                            "DeferredTaskQueue",
+                        )
+                    ],
+                ),
             ],
         ),
         Page(
@@ -934,6 +1108,7 @@ def pages() -> list[Page]:
             """,
             [
                 Signature("ninja_devx.http.errors:ErrorMap.map", display="ErrorMap.map"),
+                Signature("ninja_devx.http.errors:mask_validation_input"),
                 Signature("ninja_devx.layers.errors:DomainError"),
                 Runtime(domain_errors),
                 Runtime(exceptions_and_warnings),
@@ -975,6 +1150,8 @@ def pages() -> list[Page]:
                 ),
                 Signature("ninja_devx.testing.contracts:contract_schema"),
                 Signature("ninja_devx.layers.testing:make_context"),
+                Signature("ninja_devx.testing.factories:sample"),
+                Signature("ninja_devx.testing.factories:samples"),
             ],
         ),
         Page(
@@ -987,10 +1164,14 @@ def pages() -> list[Page]:
             [
                 Runtime(management_command("devx_scaffold")),
                 Runtime(management_command("devx_openapi")),
+                Runtime(management_command("devx_inspect")),
+                Runtime(management_command("devx_doctor")),
                 Runtime(management_command("devx_uploads")),
                 Runtime(startapp_command),
+                Runtime(management_command("devx_startproject")),
                 Runtime(management_command("devx_apikey", "ninja_devx.contrib.apikeys")),
                 Runtime(management_command("devx_webhooks", "ninja_devx.contrib.webhooks")),
+                Runtime(management_command("devx_jobs", "ninja_devx.contrib.jobs")),
                 Runtime(unasync_cli),
                 Runtime(system_checks),
             ],

@@ -11,6 +11,14 @@ pip install ninja-devx
 | `ninja-devx[otel]` | `opentelemetry-api` | `ninja_devx.contrib.otel.OpenTelemetryHook` |
 | `ninja-devx[client]` | `httpx` | generated Python clients |
 | `ninja-devx[contract]` | `schemathesis` | the `ninja_contract` pytest fixture |
+| `ninja-devx[guardian]` | `django-guardian` | the guardian object-permission backend |
+| `ninja-devx[s3]` | `boto3` | presigned S3 uploads |
+| `ninja-devx[crypto]` | `cryptography` | encrypted webhook signing secrets |
+| `ninja-devx[orjson]` | `orjson` | the fast ORJSON renderer |
+| `ninja-devx[msgspec]` | `msgspec` | the msgspec renderer |
+| `ninja-devx[redis]` | `redis` | `ninja_devx.contrib.redis_throttle.RedisThrottleStorage` |
+| `ninja-devx[structlog]` | `structlog` | binding request identity to `structlog.contextvars` in `RequestLogMiddleware` |
+| `ninja-devx[zeal]` | `django-zeal` | runtime N+1 detection (`ninja_devx.contrib.nplusone`) |
 
 Requirements: Python 3.11+, Django 4.2+ and django-ninja 1.7+. See
 [Support and stability](../project/support.md) for the tested matrix.
@@ -50,3 +58,5 @@ django_settings_module = config.settings
 
 - [Quickstart](quickstart.md): a working API in five minutes.
 - [Tutorial](tutorial.md): the blog example, step by step.
+- [Guides](../guide/index.md): find the page for a task.
+- [Inspecting controllers](../guide/inspect.md): see what a configuration resolves to.

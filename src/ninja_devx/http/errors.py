@@ -25,8 +25,9 @@ from ninja.responses import NinjaJSONEncoder
 from .._internal.types import JSONValue, status_phrase
 from ..configuration.settings import get_settings
 from ..layers.persistence import validation_failed
+from ..serialization.privacy import mask, sensitive_fields
 
-__all__ = ["ErrorFormat", "ErrorMap", "ErrorRule"]
+__all__ = ["ErrorFormat", "ErrorMap", "ErrorRule", "mask_validation_input"]
 
 E = TypeVar("E", bound=BaseException)
 ErrorFormat = Literal["ninja", "problem+json"]
@@ -157,6 +158,40 @@ def render(status: int, code: str, body: Mapping[str, JSONValue]) -> HttpRespons
             content_type="application/problem+json",
         )
     return JsonResponse(dict(body), status=status, encoder=NinjaJSONEncoder)
+
+
+def mask_validation_input(
+    errors: Iterable[Mapping[str, JSONValue]], schema: type[object] | None = None
+) -> list[dict[str, JSONValue]]:
+    """Mask ``Sensitive`` field values a validation error body would otherwise echo back.
+
+    Ninja's own request validation already drops pydantic's ``input`` key from 422 bodies;
+    this matters for a raw ``pydantic.ValidationError`` you map yourself and whose
+    ``.errors()`` keeps it::
+
+        ErrorMap().map(
+            PydanticValidationError,
+            422,
+            code="validation_failed",
+            body=lambda exc: {"detail": mask_validation_input(exc.errors(), MySchema)},
+        )
+
+    :param errors: Error items shaped like pydantic's/Ninja's (a ``loc``, optionally an
+        ``input``).
+    :param schema: The schema ``errors`` were raised against; without one nothing is masked.
+    """
+    if schema is None:
+        return [dict(error) for error in errors]
+    names = sensitive_fields(schema)
+    result: list[dict[str, JSONValue]] = []
+    for error in errors:
+        item = dict(error)
+        loc = item.get("loc")
+        field = loc[-1] if isinstance(loc, list | tuple) and loc else None
+        if "input" in item and isinstance(field, str) and field in names:
+            item["input"] = cast("JSONValue", mask(item["input"]))
+        result.append(item)
+    return result
 
 
 def _handler(

@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Protocol, TypeVar, cast, get_type_hints
+from typing import TYPE_CHECKING, Annotated, Protocol, TypeVar, cast, get_type_hints
 
 from django.http import HttpRequest
 from ninja import Status
+from ninja.params.functions import Query
 
 from ..dependencies.injection import injected
 from ..exceptions import ControllerConfigError
@@ -33,7 +34,7 @@ from ..exceptions import ControllerConfigError
 if TYPE_CHECKING:
     from .controller import Controller
 
-__all__ = ["UseCase", "use_case"]
+__all__ = ["QueryHandler", "UseCase", "use_case", "use_query"]
 
 PayloadT = TypeVar("PayloadT")
 CommandT_contra = TypeVar("CommandT_contra", contravariant=True)
@@ -48,23 +49,20 @@ class UseCase(Protocol[CommandT_contra, ResultT_co]):
     def __call__(self, command: CommandT_contra, /) -> ResultT_co: ...
 
 
-def use_case(
+class QueryHandler(Protocol[CommandT_contra, ResultT_co]):
+    """A read handler: ``__call__(query)`` sync or ``async def __call__``."""
+
+    def __call__(self, query: CommandT_contra, /) -> ResultT_co: ...
+
+
+def _bind(
     decorator: Callable[[Method], Method],
     handler: Callable[..., UseCase[CommandT, ResultT] | UseCase[CommandT, Awaitable[ResultT]]],
     *,
     command: Callable[[PayloadT], CommandT],
-    status: int | None = None,
+    status: int | None,
+    query_params: bool = False,
 ) -> Method:
-    """An operation method: map the payload with ``command`` and call the resolved handler.
-
-    An ``async`` handler (``async def __call__``) makes the operation async.
-
-    :param decorator: The operation decorator, e.g. ``post("/", response={201: OrderOut})``.
-    :param handler: A class with ``__call__(command)`` (sync or async), resolved from the container.
-    :param command: Maps the validated payload to the command; its parameter type is the request
-        body.
-    :param status: Status code of the response (default: the operation's first response).
-    """
     try:
         hints = get_type_hints(command)
     except Exception as exc:
@@ -77,7 +75,7 @@ def use_case(
     else:
         raise ControllerConfigError(f"{command!r} must annotate its payload parameter")
     handler_type = cast("type[object]", handler)
-    call = getattr(handler_type, "__call__", None)  # noqa: B004
+    call = getattr(handler_type, "__call__", None)  # noqa: B004 - the class, not an instance
     asynchronous = inspect.iscoroutinefunction(call)
 
     def respond(result: object) -> object:
@@ -105,15 +103,60 @@ def use_case(
 
         method = sync_operation
 
+    payload_annotation: object = payload_type
+    if query_params:  # GET reads: expose the schema as query parameters
+        payload_annotation = Annotated[cast("type[object]", payload_type), Query()]
     method.__annotations__ = {
         "request": HttpRequest,
-        "payload": payload_type,
+        "payload": payload_annotation,
         "use_case": injected(handler_type),
         "return": object,
     }
     method.__name__ = getattr(handler, "__name__", "use_case")
     method.__doc__ = inspect.getdoc(handler)
     return decorator(method)
+
+
+def use_case(
+    decorator: Callable[[Method], Method],
+    handler: Callable[..., UseCase[CommandT, ResultT] | UseCase[CommandT, Awaitable[ResultT]]],
+    *,
+    command: Callable[[PayloadT], CommandT],
+    status: int | None = None,
+) -> Method:
+    """An operation method: map the payload with ``command`` and call the resolved handler.
+
+    An ``async`` handler (``async def __call__``) makes the operation async.
+
+    :param decorator: The operation decorator, e.g. ``post("/", response={201: OrderOut})``.
+    :param handler: A class with ``__call__(command)`` (sync or async), resolved from the container.
+    :param command: Maps the validated payload to the command; its parameter type is the request
+        body.
+    :param status: Status code of the response (default: the operation's first response).
+    """
+    return _bind(decorator, handler, command=command, status=status)
+
+
+def use_query(
+    decorator: Callable[[Method], Method],
+    handler: Callable[
+        ..., QueryHandler[CommandT, ResultT] | QueryHandler[CommandT, Awaitable[ResultT]]
+    ],
+    *,
+    query: Callable[[PayloadT], CommandT],
+    status: int | None = None,
+) -> Method:
+    """A read operation: map the query parameters and call the resolved handler.
+
+    The read counterpart of :func:`use_case`. Use a ``FilterSchema`` (or any schema) as the
+    handler's payload; for GET operations its fields become query parameters.
+
+    :param decorator: The operation decorator, e.g. ``get("/stats", response=StatsOut)``.
+    :param handler: A class with ``__call__(query)`` (sync or async), resolved from the container.
+    :param query: Maps the validated payload to the query; its parameter type is the query schema.
+    :param status: Status code of the response (default: the operation's first response).
+    """
+    return _bind(decorator, handler, command=query, status=status, query_params=True)
 
 
 def _method_owner(function: Callable[..., object]) -> type[object] | None:

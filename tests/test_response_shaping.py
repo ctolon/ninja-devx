@@ -3,13 +3,20 @@ from typing import Annotated
 import pytest
 from django.contrib.auth.models import User
 from django.db import connection
+from django.test import RequestFactory
 from django.test.utils import CaptureQueriesContext
 from ninja import NinjaAPI, Schema
 from ninja.testing import TestClient
 
 from ninja_devx import ControllerConfigError
 from ninja_devx.crud import ReadOnlyModelController
-from ninja_devx.serialization.visibility import Expandable, FieldVisibility
+from ninja_devx.serialization.visibility import (
+    Expandable,
+    FieldVisibility,
+    ResponseShape,
+    response_shape,
+    set_response_shape,
+)
 from tests.testapp.models import Article
 
 pytestmark = pytest.mark.django_db
@@ -133,3 +140,13 @@ def test_sparse_responses_are_documented_as_partial(tmp_path, articles):
     client = TestClient(Articles.as_router())
     sparse = client.get(f"/{articles[0].pk}?fields=id,title").json()
     assert module.ArticleOutPartial.model_validate(sparse).title == "t0"
+
+
+def test_response_shape_is_read_from_the_request():
+    assert response_shape(None) is None
+    request = RequestFactory().get("/x")
+    assert response_shape(request) is None
+    set_response_shape(request, ResponseShape(schema=object, fields=frozenset({"a"})))
+    shape = response_shape(request)
+    assert shape is not None
+    assert shape.fields == frozenset({"a"})

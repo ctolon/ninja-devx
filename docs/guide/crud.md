@@ -128,6 +128,49 @@ Output schemas describe what gets serialized, so the queries are derived from th
 your own views. Check the result with `assert_max_queries(n)` or pytest-django's
 `django_assert_max_num_queries`.
 
+A resolver body cannot be analysed statically, so declare what it reads. The planner
+loads these explicitly and the `ninja_devx.W006` system check validates them:
+
+```python
+from ninja_devx.crud import requires_related
+
+
+class ArticleOut(Schema):
+    id: int
+    author_name: str
+
+    @staticmethod
+    @requires_related("author")
+    def resolve_author_name(obj: Article) -> str:
+        return obj.author.username
+
+
+class ArticleController(ReadOnlyModelController[Article, ArticleOut]):
+    related = ("author", "comments__user")  # always loaded, for any custom resolver
+```
+
+`related` takes `select_related` paths for forward keys and `prefetch_related` paths for
+many/many-to-many relations; both forms accept `__` chains.
+
+## Search backends
+
+`search_fields` uses `icontains` by default. Set `search_backend` to change how the
+`search` parameter filters the queryset, for example PostgreSQL full-text search:
+
+```python
+from ninja_devx.crud import PostgresSearch
+
+class ArticleController(ReadOnlyModelController[Article, ArticleOut]):
+    search_fields = ("title", "body")
+    search_backend = PostgresSearch(config="english")
+```
+
+Implement `SearchBackend` (a `search(queryset, term, fields)` method) for your own index.
+The `search` parameter stays in the generated filter schema and in OpenAPI; with a backend
+the controller passes the term to `search()` instead of applying `icontains` lookups.
+`PostgresSearch` computes the search vector per row; add a `SearchVectorField` with a GIN
+index for production tables.
+
 ## Nested resources
 
 ```python
@@ -159,6 +202,35 @@ Keys are operation names (`list`, `retrieve`, `create`, `update`, `partial_updat
 and `enabled`. A misspelled name fails at startup and lists the available ones.
 `routes` works on any `Controller`.
 
+## Timestamps, user stamps and soft-delete columns
+
+`ninja_devx.models` ships abstract bases for the bookkeeping columns most tables carry.
+Combine them with a model; the controllers fill the user columns from the request:
+
+```python
+from ninja_devx.models import SoftDeletable, Stamped
+
+class Post(Stamped, SoftDeletable):
+    title = models.CharField(max_length=200)
+
+
+class PostController(SoftDeleteMixin[Post, PostOut], CRUDController[Post, PostOut, PostIn]):
+    pass
+```
+
+| Base | Columns | Filled by |
+|---|---|---|
+| `TimeStamped` | `created_at` (indexed), `updated_at` | Django (`auto_now_add`/`auto_now`) |
+| `UserStamped` | `created_by`, `updated_by` | create and update operations, including bulk and import |
+| `Stamped` | both of the above | |
+| `SoftDeletable` | `deleted_at`, `deleted_by` | `SoftDeleteMixin`, with no `soft_delete` configuration |
+
+The user columns are nullable: an anonymous write or a deleted user leaves `None`. All
+columns are `editable=False`, so generated input schemas, `devx_scaffold` and the drift check
+leave them out while output schemas may include them. `perform_create` uses `context_data`
+and `perform_update` uses `update_context_data` for the stamps; an override that bypasses the
+service must merge them itself. `ETag(field="updated_at")` pairs well with `TimeStamped`.
+
 ## Soft delete
 
 ```python
@@ -177,6 +249,38 @@ class PostController(SoftDeleteMixin[Post, PostOut], CRUDController[Post, PostOu
 - `queryset_with_deleted(request)` includes deleted rows (tenant, parent and owner still
   apply). `perform_restore` is overridable.
 - The configuration is validated at startup.
+
+### Cascade
+
+Mark related objects deleted/restored with the parent. Only the marker field is cascaded:
+
+```python
+class PostController(SoftDeleteMixin[Post, PostOut], CRUDController[Post, PostOut, PostIn]):
+    soft_delete = SoftDelete("deleted_at")
+    soft_delete_cascade = ("comments", "attachments")
+```
+
+### Unique values after deletion
+
+A normal unique constraint would keep a deleted row's value reserved forever. Use
+`soft_delete_unique` in the model so uniqueness only applies to active rows:
+
+```python
+from django.db import models
+from ninja_devx.crud import soft_delete_unique
+
+
+class Post(models.Model):
+    slug = models.SlugField()
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [soft_delete_unique(Post, "slug")]
+```
+
+It builds a partial `UniqueConstraint` with the active condition; pass
+`config=SoftDelete(...)` when the marker is not `deleted_at`, and `name=` to override the
+generated constraint name.
 
 ## Offset pagination
 
@@ -231,6 +335,28 @@ request's ordering:
 - Each request runs in one transaction.
 - Validation, object permissions and `perform_*` run per object.
 - Requests are capped at `bulk_limit` objects.
+
+### Partial success
+
+`bulk_partial = True` on `BulkCreateMixin` or `BulkUpdateMixin` runs each item in its own
+savepoint instead of the whole request:
+
+```python
+class ContactController(
+    BulkCreateMixin[Contact, ContactOut, ContactIn],
+    CRUDController[Contact, ContactOut, ContactIn],
+):
+    bulk_partial = True
+```
+
+- The response is 207 with `{"results": [{"index": 0, "status": 201, "data": {...}}, {"index": 1, "status": 422, "errors": [...]}]}`,
+  one entry per input item, in order. A succeeding item's `errors` is absent; a failing
+  item's `data` is absent.
+- `errors` uses Ninja's validation error shape (`{"type", "loc", "msg"}`). Model validation
+  failures and unknown primary keys in `bulk_update` (404) become entries instead of
+  aborting the request; anything else still aborts it.
+- The `X-Bulk-Failed` response header carries the number of failed entries.
+- The default (`bulk_partial = False`) keeps the all-or-nothing behaviour above.
 
 ## Import and export
 

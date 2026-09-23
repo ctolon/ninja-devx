@@ -3,29 +3,44 @@
 from __future__ import annotations
 
 import builtins
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, Annotated, ClassVar, Generic, TypeVar, cast
+import inspect
+from collections.abc import Awaitable, Callable, Sequence
+from typing import TYPE_CHECKING, Annotated, ClassVar, Final, Generic, TypeVar, cast
 from uuid import UUID
 
-from django.http import Http404, HttpRequest
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
+from django.http import Http404, HttpRequest, HttpResponseBase
 from django.utils.translation import gettext as _
 from ninja import Schema, Status
-from ninja.errors import ValidationError
+from ninja.decorators import decorate_view
+from ninja.errors import HttpError, ValidationError
 from ninja.params.functions import Body
 from pydantic import BaseModel, Field
 
 from .._internal.cache import owned_cache
 from .._internal.generics import LazyAnnotation, type_arguments
 from .._internal.i18n import not_found
+from .._internal.types import ViewDecorator, ViewFunction
 from ..configuration.settings import class_setting, get_settings
+from ..layers.errors import DomainError
 from ..routing.operations import async_variant, post
 from ..serialization.pydantic import build_schema
 from ..serialization.schemas import patch_type
 from .annotations import controller_lookup_type
 from .controllers import OUT_SCHEMA, CreateHooks, InT, ModelController, ModelT, OutT
+from .persistence import changed_fields, validation_failed
 from .writes import write_scope
 
-__all__ = ["BulkCreateMixin", "BulkDelete", "BulkDestroyMixin", "BulkPatch", "BulkUpdateMixin"]
+__all__ = [
+    "BulkCreateMixin",
+    "BulkDelete",
+    "BulkDestroyMixin",
+    "BulkErrorDetail",
+    "BulkPatch",
+    "BulkResultOut",
+    "BulkUpdateMixin",
+]
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 _Key = int | str | UUID
@@ -42,6 +57,7 @@ class _BulkDeleteMarker(LazyAnnotation):
 
 
 if TYPE_CHECKING:
+    from .._internal.types import ResponseSpec
 
     class BulkPatch(Schema, Generic[SchemaT]):
         """``{"pks": [...], "data": {...}}``: apply the same partial update to many objects."""
@@ -62,6 +78,52 @@ else:
 
     BulkPatch = _BulkPatchAlias()
     BulkDelete = Annotated[BaseModel, _BulkDeleteMarker()]
+
+
+class BulkErrorDetail(Schema):
+    """One item of a bulk 207 entry's ``errors``, in Ninja's validation error shape."""
+
+    type: str
+    """Ninja's validation error type (``"missing"``, ``"value_error"``, ...)."""
+    loc: builtins.list[int | str]
+    """Field path within the item, as Ninja reports it (without the item's own index)."""
+    msg: str
+    """Human-readable message."""
+
+
+class _BulkResultMarker(LazyAnnotation):
+    def resolve(self, annotation: object, controller: type[object]) -> object:
+        return _bulk_result_schema(controller)
+
+
+BulkResultOut = Annotated[BaseModel, _BulkResultMarker()]
+"""``{"results": [{"index", "status", "data"} | {"index", "status", "errors"}]}``: the body
+of a partial-success (207) bulk response, its ``data`` typed like the controller's output."""
+
+
+def _bulk_result_schema(controller: type[object]) -> type[BaseModel]:
+    """``{"results": [...]}`` typed with the controller's own output schema (cached)."""
+    _schemas: dict[type[object], type[BaseModel]] = owned_cache(controller, "bulk_result_schemas")
+    if (schema := _schemas.get(controller)) is not None:
+        return schema
+    output_schema = cast("type[BaseModel]", type_arguments(controller).get(OutT))
+    item = build_schema(
+        f"{controller.__name__}BulkItem",
+        Schema,
+        {
+            "index": (int, ...),
+            "status": (int, ...),
+            "data": (output_schema | None, None),
+            "errors": (builtins.list[BulkErrorDetail] | None, None),
+        },
+    )
+    built = build_schema(
+        f"{controller.__name__}BulkResult",
+        Schema,
+        {"results": (builtins.list[item], ...)},  # type: ignore[valid-type]
+    )
+    _schemas[controller] = built
+    return built
 
 
 def _bulk_schema(controller: type[object], *, patch: bool) -> type[BaseModel]:
@@ -96,16 +158,7 @@ class _BulkBase(ModelController[ModelT], Generic[ModelT]):
 
     def get_objects(self, request: HttpRequest, lookups: Sequence[object]) -> builtins.list[ModelT]:
         """Fetch objects in request order; 404 if any is missing; object permissions apply."""
-        if len(set(lookups)) != len(lookups):
-            raise ValidationError(
-                [
-                    {
-                        "type": "duplicate",
-                        "loc": ["body", "pks"],
-                        "msg": "Duplicate keys are not allowed",
-                    }
-                ]
-            )
+        _reject_duplicates(lookups)
         by_key = {
             getattr(instance, self.lookup_field): instance
             for instance in self.scoped_queryset(request).filter(
@@ -142,22 +195,127 @@ def _check_size(controller: type[object], size: int) -> None:
         raise ValidationError([{"type": "too_long", "loc": ["body", "payload"], "msg": message}])
 
 
+def _reject_duplicates(lookups: Sequence[object]) -> None:
+    if len(set(lookups)) != len(lookups):
+        raise ValidationError(
+            [{"type": "duplicate", "loc": ["body", "pks"], "msg": "Duplicate keys are not allowed"}]
+        )
+
+
+def _bulk_error(exc: Exception) -> tuple[int, builtins.list[dict[str, object]]] | None:
+    """``(status, errors)`` for an exception a bulk partial item may fail with, or ``None``
+    when it should abort the whole request instead of becoming a 207 entry."""
+    if isinstance(exc, DjangoValidationError):
+        failure = validation_failed(exc)
+        errors: builtins.list[dict[str, object]] = [
+            {"type": failure.code, "loc": ["body", field] if field else ["body"], "msg": message}
+            for field, messages in failure.errors.items()
+            for message in messages
+        ] or [{"type": failure.code, "loc": ["body"], "msg": failure.message}]
+        return 422, errors
+    if isinstance(exc, IntegrityError):
+        return 422, [{"type": "integrity_error", "loc": ["body"], "msg": str(exc)}]
+    if isinstance(exc, DomainError):
+        return exc.http_status, [{"type": exc.code, "loc": ["body"], "msg": exc.message}]
+    if isinstance(exc, Http404):
+        return 404, [{"type": "not_found", "loc": ["body"], "msg": str(exc)}]
+    if isinstance(exc, HttpError):
+        return exc.status_code, [{"type": "http_error", "loc": ["body"], "msg": str(exc)}]
+    return None
+
+
+_FAILED_ATTR: Final = "_ninja_devx_bulk_failed"
+
+
+def _remember_bulk_failed(request: HttpRequest, count: int) -> None:
+    request.__dict__[_FAILED_ATTR] = count
+
+
+def _apply_failed_header(request: HttpRequest, response: HttpResponseBase) -> HttpResponseBase:
+    count: object = request.__dict__.get(_FAILED_ATTR)
+    if isinstance(count, int):
+        response["X-Bulk-Failed"] = str(count)
+    return response
+
+
+def _wrap_run(run: Callable[..., object]) -> Callable[..., object]:
+    if inspect.iscoroutinefunction(run):
+
+        async def arun(request: HttpRequest, *args: object, **kwargs: object) -> object:
+            awaitable = cast("Callable[..., Awaitable[HttpResponseBase]]", run)
+            response = await awaitable(request, *args, **kwargs)
+            return _apply_failed_header(request, response)
+
+        return arun
+
+    def srun(request: HttpRequest, *args: object, **kwargs: object) -> object:
+        response = cast("Callable[..., HttpResponseBase]", run)(request, *args, **kwargs)
+        return _apply_failed_header(request, response)
+
+    return srun
+
+
+def _bulk_response_headers() -> ViewDecorator:
+    """Adds ``X-Bulk-Failed`` (a partial-success item count) set with ``_remember_bulk_failed``."""
+
+    def decorator(handler: ViewFunction) -> ViewFunction:
+        return decorate_view(_wrap_run)(handler)
+
+    return decorator
+
+
 class BulkCreateMixin(_BulkBase[ModelT], CreateHooks[ModelT, InT], Generic[ModelT, OutT, InT]):
     """``POST /bulk``: create many objects (validation and signals run per object)."""
 
-    @post("/bulk", response={201: builtins.list[OUT_SCHEMA]})  # type: ignore[valid-type]
+    bulk_partial: ClassVar[bool] = False
+    """Create each item in its own savepoint: failures become 207 entries (``results``)
+    instead of rolling back the whole request."""
+
+    @post(
+        "/bulk",
+        response=cast(
+            "ResponseSpec",
+            {201: builtins.list[OUT_SCHEMA], 207: BulkResultOut},  # type: ignore[valid-type]
+        ),
+        decorators=(_bulk_response_headers(),),
+    )
     def bulk_create(
         self, request: HttpRequest, payload: builtins.list[InT]
-    ) -> Status[builtins.list[ModelT]]:
+    ) -> Status[builtins.list[ModelT]] | Status[dict[str, object]]:
         _check_size(type(self), len(payload))
+        if type(self).bulk_partial:
+            return self._bulk_create_partial(request, payload)
         with write_scope(self, request):
             created = [self.perform_create(request, item) for item in payload]
             return Status(201, self.refresh_many(request, created))
 
+    def _bulk_create_partial(
+        self, request: HttpRequest, payload: builtins.list[InT]
+    ) -> Status[dict[str, object]]:
+        alias = self.write_database(request)
+        results: builtins.list[dict[str, object]] = []
+        failed = 0
+        with write_scope(self, request):
+            for index, item in enumerate(payload):
+                try:
+                    with transaction.atomic(using=alias):
+                        created = self.refresh(request, self.perform_create(request, item))
+                except Exception as exc:
+                    outcome = _bulk_error(exc)
+                    if outcome is None:
+                        raise
+                    status, errors = outcome
+                    failed += 1
+                    results.append({"index": index, "status": status, "errors": errors})
+                    continue
+                results.append({"index": index, "status": 201, "data": created})
+        _remember_bulk_failed(request, failed)
+        return Status(207, {"results": results})
+
     @async_variant(bulk_create)
     async def abulk_create(
         self, request: HttpRequest, payload: builtins.list[InT]
-    ) -> Status[builtins.list[ModelT]]:
+    ) -> Status[builtins.list[ModelT]] | Status[dict[str, object]]:
         await self.aprepare_request(request)
         return await self.run_sync(self.bulk_create, request, payload)
 
@@ -165,19 +323,93 @@ class BulkCreateMixin(_BulkBase[ModelT], CreateHooks[ModelT, InT], Generic[Model
 class BulkUpdateMixin(_BulkBase[ModelT], Generic[ModelT, OutT, InT]):
     """``POST /bulk-update``: apply one partial update to many objects."""
 
-    @post("/bulk-update", response=builtins.list[OUT_SCHEMA])  # type: ignore[valid-type]
-    def bulk_update(self, request: HttpRequest, payload: BulkPatch[InT]) -> builtins.list[ModelT]:
+    bulk_partial: ClassVar[bool] = False
+    """Update each item in its own savepoint: an unknown pk or a per-item failure becomes a
+    207 entry (``results``) instead of rolling back the whole request."""
+
+    @post(
+        "/bulk-update",
+        response=cast(
+            "ResponseSpec",
+            {200: builtins.list[OUT_SCHEMA], 207: BulkResultOut},  # type: ignore[valid-type]
+        ),
+        decorators=(_bulk_response_headers(),),
+    )
+    def bulk_update(
+        self, request: HttpRequest, payload: BulkPatch[InT]
+    ) -> Status[builtins.list[ModelT]] | Status[dict[str, object]]:
+        if type(self).bulk_partial:
+            return self._bulk_update_partial(request, payload)
         with write_scope(self, request):
             instances = self.get_objects(request, payload.pks)
+            changes = {
+                instance.pk: changed_fields(instance, payload.data) for instance in instances
+            }
             updated = [
                 self.perform_update(request, instance, payload.data) for instance in instances
             ]
-            return self.refresh_many(request, updated)
+            refreshed = self.refresh_many(request, updated)
+            for instance in refreshed:
+                if changes.get(instance.pk):
+                    self.on_change(request, instance, changes[instance.pk])
+            return Status(200, refreshed)
+
+    def _bulk_update_partial(
+        self, request: HttpRequest, payload: BulkPatch[InT]
+    ) -> Status[dict[str, object]]:
+        _reject_duplicates(payload.pks)
+        alias = self.write_database(request)
+        results: builtins.list[dict[str, object]] = []
+        failed = 0
+        with write_scope(self, request):
+            for index, lookup in enumerate(payload.pks):
+                instance = (
+                    self.scoped_queryset(request)
+                    .using(alias)
+                    .filter(**{self.lookup_field: lookup})
+                    .first()
+                )
+                if instance is None:
+                    failed += 1
+                    results.append(
+                        {
+                            "index": index,
+                            "status": 404,
+                            "errors": [
+                                {
+                                    "type": "not_found",
+                                    "loc": ["body", "pks", index],
+                                    "msg": not_found(self.get_model()),
+                                }
+                            ],
+                        }
+                    )
+                    continue
+                try:
+                    with transaction.atomic(using=alias):
+                        self.check_object_permissions(request, instance)
+                        changes = changed_fields(instance, payload.data)
+                        updated = self.refresh(
+                            request, self.perform_update(request, instance, payload.data)
+                        )
+                        if changes:
+                            self.on_change(request, updated, changes)
+                except Exception as exc:
+                    outcome = _bulk_error(exc)
+                    if outcome is None:
+                        raise
+                    status, errors = outcome
+                    failed += 1
+                    results.append({"index": index, "status": status, "errors": errors})
+                    continue
+                results.append({"index": index, "status": 200, "data": updated})
+        _remember_bulk_failed(request, failed)
+        return Status(207, {"results": results})
 
     @async_variant(bulk_update)
     async def abulk_update(
         self, request: HttpRequest, payload: BulkPatch[InT]
-    ) -> builtins.list[ModelT]:
+    ) -> Status[builtins.list[ModelT]] | Status[dict[str, object]]:
         await self.aprepare_request(request)
         return await self.run_sync(self.bulk_update, request, payload)
 

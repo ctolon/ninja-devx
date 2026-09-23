@@ -5,9 +5,10 @@ ninja-devx adds typed controllers and reusable resource policies to
 ownership, tenant scoping, transaction, dependency-lifetime and error-handling rules
 across several endpoints. Services, repositories and contrib modules are optional.
 
-The package is preparing its first **0.0.1 alpha** release. See the
-[scope and design rationale](docs/project/scope.md), [comparison](docs/project/comparison.md)
-and [support policy](docs/project/support.md) before adopting it.
+Version **0.0.2** is the current alpha (0.0.1 was the first published release). See the
+[scope and design rationale](https://github.com/ctolon/ninja-devx/blob/main/docs/project/scope.md),
+[comparison](https://github.com/ctolon/ninja-devx/blob/main/docs/project/comparison.md) and
+[support policy](https://github.com/ctolon/ninja-devx/blob/main/docs/project/support.md) before adopting it.
 
 ```python
 class PostController(SoftDeleteMixin[Post, PostOut], CRUDController[Post, PostOut, PostIn]):
@@ -48,10 +49,10 @@ These lines give you:
 - Controller overhead is measured against function views with explicit budgets (see
   [performance](https://github.com/ctolon/ninja-devx/blob/main/docs/project/performance.md)).
 
-Requires Python 3.11+, Django 4.2+ and django-ninja 1.7+ ([support policy](https://github.com/ctolon/ninja-devx/blob/main/docs/project/support.md)).
+Requires Python 3.11+, Django 4.2+ and django-ninja 1.7.x ([support policy](https://github.com/ctolon/ninja-devx/blob/main/docs/project/support.md)).
 
 ```bash
-pip install ninja-devx==0.0.1    # after publication; extras: [guardian] [s3] [crypto] [orjson] [msgspec] [dishka] [svcs] [otel] [client] [contract]
+pip install ninja-devx    # extras: [guardian] [s3] [crypto] [orjson] [msgspec] [dishka] [svcs] [otel] [client] [contract]
 ```
 
 ## Features
@@ -62,16 +63,17 @@ pip install ninja-devx==0.0.1    # after publication; extras: [guardian] [s3] [c
 | Permissions | composable `&` `\|` `~`, `Also(...)`, object-level, async, policies, `AuthedRequest[User]` | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/permissions.md) |
 | Object permissions | per-object grants (built-in table or django-guardian), DRF-style 404/403, lists filtered in SQL, sharing endpoints | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/object-permissions.md) |
 | Errors | `DomainError` and typed `ErrorMap` rules per operation, controller, project; `problem+json` | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/errors.md) |
-| CRUD | sync and async from one class, `AutoCRUDController[Model]`, `owner_field`, `Instance`/`Locked`, filters, offset and cursor pagination, nested, configurable soft delete and routes, bulk, CSV/JSONL import and export, N+1 planner | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/crud.md) |
-| SaaS and HTTP | `tenant_field` multi-tenancy, `ETag`/304/`If-Match` optimistic locking, user/scope/tenant throttles, role-based field visibility, `?fields=`/`?expand=` | [tenancy](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/tenancy.md), [caching](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/conditional.md), [throttling](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/throttling.md), [visibility](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/visibility.md) |
-| Layers | HTTP-free services, repositories, `RequestContext`, after-commit tasks, policies, selectors, in-memory fakes | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/layers.md) |
+| CRUD | sync and async from one class, `AutoCRUDController[Model]`, `owner_field`, `Instance`/`Locked`, filters, offset and cursor pagination, nested, configurable soft delete and routes, bulk (with per-item partial success), CSV/JSONL import and export, N+1 planner with explicit `related`/`@requires_related` hints and `expand_rules` capping `?expand=` per parent, pluggable `search_backend` (`PostgresSearch`), nested writes (`NestedWritesMixin`) for a parent and its children in one request, API-level state transitions (`TransitionsMixin`), a metadata endpoint (`MetaMixin`) and an aggregation endpoint (`AggregateMixin`), `TimeStamped`/`UserStamped`/`SoftDeletable` model bases filled from the request | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/crud.md) |
+| SaaS and HTTP | `tenant_field` multi-tenancy, `ETag`/304/`If-Match` optimistic locking, user/scope/tenant throttles, role-based read and write field visibility (`VisibleTo`/`WriteVisibleTo`), `?fields=`/`?expand=` | [tenancy](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/tenancy.md), [caching](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/conditional.md), [throttling](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/throttling.md), [visibility](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/visibility.md) |
+| Layers | HTTP-free services, repositories, `RequestContext`, after-commit tasks with Celery/Dramatiq/RQ/Taskiq/Temporal/FastStream adapters, policies, selectors, in-memory fakes | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/layers.md) |
+| CQRS and DDD | `use_case`/`use_query` command-query handlers, optional `Command`/`Query` markers, `DomainEvent` + `EventBus` (after commit), `UnitOfWork` | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/cqrs.md) |
 | DI | `Inject[T]`, `Resolve(fn)`, a checked container with async factories, dishka and svcs adapters | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/dependency-injection.md) |
 | Async | `mode`, one thread hop per unit of work, async hooks, loud lazy-load errors, `unasync` | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/async.md) |
 | Cross-cutting | hooks, `LoggingHook`, OpenTelemetry, `atomic=True`, `idempotent()` | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/hooks.md) |
-| Operations | router/API middleware, request ids, deprecation and rate limit headers, health checks, orjson/msgspec renderers | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/middleware.md) |
-| Optional integrations | scoped, rate-limited API keys, audit log with diffs, transactional outbox and signed, destination-validated webhooks with encrypted secrets, presigned S3 uploads, Django admin for the credential, audit and webhook records | [API keys](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/api-keys.md), [audit](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/audit.md), [webhooks](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/webhooks.md), [uploads](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/uploads.md) |
-| Quality | system checks, `devx_scaffold --check` schema drift, schemathesis contract tests, OpenAPI snapshots, `assert_max_queries`/`assert_max_hops` | [checks](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/checks.md), [testing](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/testing.md) |
-| Code generation | `devx_startapp`, `devx_scaffold` with model constraints, TypeScript and validated pydantic Python clients | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/codegen.md) |
+| Operations | router/API middleware and `APIPlugin` bundles, request ids, deprecation, rate limit and pagination headers, security headers, request hardening, response caching, health checks, orjson/msgspec renderers, structured per-request logs (`RequestLogPlugin`), `X-Query-Count`/`X-Query-Time`/`X-Query-Plan` in development (`QueryExplainMiddleware`), `Accept-Version` response downgrading (`VersionedResponseMixin`), pluggable throttle storage with an atomic Redis backend, `Sensitive` field masking in exports, validation errors and the audit log | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/middleware.md), [operations](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/operations.md) |
+| Optional integrations | scoped, rate-limited API keys, audit log with diffs, transactional outbox and signed, destination-validated webhooks with encrypted secrets, presigned S3 uploads, background jobs tracked as `Job` rows (`start_job`/`@job`, `JobsController`, `devx_jobs`), Django admin for the credential, audit, webhook and job records | [API keys](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/api-keys.md), [audit](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/audit.md), [webhooks](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/webhooks.md), [uploads](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/uploads.md), [jobs](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/jobs.md) |
+| Quality | system checks (`E001`, `E002`, `E004`, `E007`, `W003`, `W005`, `W006`, `W007`), `devx_scaffold --check` schema drift, `devx_openapi --against` breaking-change gate, `devx_inspect` policy tree, `devx_doctor` configuration-risk findings, runtime N+1 detection over django-zeal, `devx_startproject` scaffolding a runnable project, schemathesis contract tests, OpenAPI snapshots, `sample`/`samples` payloads, `assert_max_queries`/`assert_max_hops` | [checks](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/checks.md), [inspecting](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/inspect.md), [testing](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/testing.md), [N+1 and devx_doctor](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/doctor.md), [starting a project](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/startproject.md) |
+| Code generation | `devx_startapp`, `devx_scaffold` with model constraints, TypeScript and validated pydantic Python clients with discriminated unions, cookie/multipart support and Python SSE iterators | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/codegen.md) |
 | Settings and translations | `NINJA_DEVX` project defaults; client-facing messages use Django's `gettext`, so you can ship your own catalog | [guide](https://github.com/ctolon/ninja-devx/blob/main/docs/guide/i18n.md) |
 
 Start with the [quickstart](https://github.com/ctolon/ninja-devx/blob/main/docs/getting-started/quickstart.md), then pick an
@@ -90,16 +92,18 @@ Every option, parameter, setting and error code is listed with its type and defa
 
 ## Contributing and security
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as described in
-[SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](https://github.com/ctolon/ninja-devx/blob/main/CONTRIBUTING.md). Report
+vulnerabilities privately as described in
+[SECURITY.md](https://github.com/ctolon/ninja-devx/blob/main/SECURITY.md).
 
 ## License
 
-[Apache License 2.0](LICENSE).
+[Apache License 2.0](https://github.com/ctolon/ninja-devx/blob/main/LICENSE).
 
 ## Development
 
-For the disposable Docker test stack and release gates, see [release validation](docs/project/releasing.md).
+For the disposable Docker test stack and release gates, see
+[release validation](https://github.com/ctolon/ninja-devx/blob/main/docs/project/releasing.md).
 
 ```bash
 uv sync --group docs

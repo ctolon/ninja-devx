@@ -61,7 +61,7 @@ Per-object Django permissions by HTTP method, like DRF's `DjangoObjectPermission
 
 | Class | Arguments | Description |
 |---|---|---|
-| `GrantsBackend` | — | Grants stored in `ninja_devx.contrib.grants.ObjectGrant`. |
+| `GrantsBackend` | — | Object permission backend stored in `ninja_devx.contrib.grants.ObjectGrant`. |
 | `GuardianBackend` | — | django-guardian's `ObjectPermissionChecker` and shortcuts. |
 | `DjangoBackend` | — | `user.has_perm(perm, obj)` through `AUTHENTICATION_BACKENDS`; no list filtering. |
 
@@ -151,6 +151,18 @@ def VisibleTo(*permissions: BasePermission[Never], hidden: Literal['null', 'omit
 | `*permissions` | `BasePermission[Never]` | — | All must allow; each counts as its request check and its object check. |
 | `hidden` | `Literal['null', 'omit']` | `'null'` | `"null"` serializes a hidden field as `null`; `"omit"` leaves it out (needs `FieldVisibility`). |
 
+### `WriteVisibleTo()`
+
+```python
+def WriteVisibleTo(*permissions: BasePermission[Never]) -> None: ...
+```
+
+A field only some callers may write; checked by model controllers before persisting.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `*permissions` | `BasePermission[Never]` | — | All must allow the request, or the field is rejected. |
+
 ### `Expandable`
 
 A relation rendered as its key, or as a nested schema when the client asks.
@@ -158,3 +170,46 @@ A relation rendered as its key, or as a nested schema when the client asks.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `source` | `str \| None` | `None` | Attribute holding the key when not expanded (default `<field>_id`). |
+
+### `Sensitive`
+
+Field metadata: `Annotated[str, Sensitive()]`. Carries no configuration;
+masked by `ExportMixin`, `mask_validation_input` and `AuditPrivacy`. See
+[Operations](../guide/operations.md#sensitive-fields).
+
+### `sensitive_fields()`
+
+```python
+def sensitive_fields(schema: type[object]) -> frozenset[str]: ...
+```
+
+Field and alias names on `schema` annotated with `Sensitive`.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `schema` | `type[object]` | — | A pydantic model (or `Schema`). |
+
+### `mask()`
+
+```python
+def mask(value: object) -> object: ...
+```
+
+Replace a sensitive value with `"***"` (`None` stays `None`; lists are masked element-wise).
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `value` | `object` | — | The value to mask. |
+
+### `redact_payload()`
+
+```python
+def redact_payload(schema: type[object], data: Mapping[str, object]) -> dict[str, object]: ...
+```
+
+A copy of `data` with every `Sensitive` field of `schema` masked.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `schema` | `type[object]` | — | The pydantic model `data` was (or will be) dumped from. |
+| `data` | `Mapping[str, object]` | — | A mapping keyed by field name or alias, such as a `model_dump()` result. |

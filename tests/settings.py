@@ -14,7 +14,9 @@ INSTALLED_APPS = [
     "ninja_devx.contrib.apikeys",
     "ninja_devx.contrib.audit",
     "ninja_devx.contrib.webhooks",
+    "ninja_devx.contrib.jobs",
     "guardian",
+    "zeal",
     "tests.testapp",
 ]
 AUTHENTICATION_BACKENDS = [

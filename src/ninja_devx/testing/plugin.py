@@ -10,6 +10,8 @@ Fixtures:
 - ``openapi_snapshot(api, name="openapi")`` compares ``api``'s schema with
   ``__snapshots__/<test module>/<name>.json``; run ``pytest --update-snapshots``
   to accept changes.
+- ``strict_queries`` runs the test inside ``django-zeal``, raising on any N+1; skips with a
+  clear reason when ``zeal`` (the ``ninja-devx[zeal]`` extra) is not installed.
 
 Async tests that use the database without ``django_db(transaction=True)`` get an
 ``AsyncDatabaseTestWarning``: their ORM calls run on another thread and connection,
@@ -24,7 +26,7 @@ from __future__ import annotations
 import inspect
 import json
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Unpack
@@ -167,3 +169,18 @@ def openapi_snapshot(request: pytest.FixtureRequest) -> Callable[..., None]:
             )
 
     return check
+
+
+@pytest.fixture
+def strict_queries() -> Generator[None]:
+    """Raise ``zeal.NPlusOneError`` for any N+1 in this test, regardless of ``ZEAL_RAISE``.
+
+    Skips with a clear reason when ``django-zeal`` is not installed
+    (``pip install ninja-devx[zeal]``).
+    """
+    from ..contrib.nplusone import zeal_installed, zeal_strict
+
+    if not zeal_installed():
+        pytest.skip("django-zeal is not installed; add the `zeal` extra to use strict_queries")
+    with zeal_strict():
+        yield

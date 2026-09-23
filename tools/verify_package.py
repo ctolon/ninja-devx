@@ -33,7 +33,8 @@ settings.configure(
     SECRET_KEY="isolated-package-test", ROOT_URLCONF=__name__, USE_TZ=True,
     INSTALLED_APPS=["django.contrib.auth", "django.contrib.contenttypes", "ninja_devx",
                     "ninja_devx.contrib.grants", "ninja_devx.contrib.apikeys",
-                    "ninja_devx.contrib.audit", "ninja_devx.contrib.webhooks"],
+                    "ninja_devx.contrib.audit", "ninja_devx.contrib.webhooks",
+                    "ninja_devx.contrib.jobs"],
     DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}},
 )
 import django
@@ -63,6 +64,9 @@ modules = {
     "client": ["httpx"], "contract": ["schemathesis", "ninja_devx.testing.contracts"],
     "guardian": ["guardian"], "orjson": ["orjson"], "msgspec": ["msgspec"],
     "s3": ["boto3", "ninja_devx.contrib.uploads"], "crypto": ["cryptography.fernet"],
+    "redis": ["redis", "ninja_devx.contrib.redis_throttle"],
+    "structlog": ["structlog", "ninja_devx.http.requestlog"],
+    "zeal": ["zeal", "ninja_devx.contrib.nplusone"],
 }
 for extra in selected:
     for module in modules[extra]:
@@ -127,6 +131,9 @@ def main() -> int:
         for required in [
             "ninja_devx/py.typed",
             "ninja_devx/migrations/0002_uploadrecord.py",
+            "ninja_devx/templates/project/pyproject.toml",
+            "ninja_devx/templates/project/manage.py-tpl",
+            "ninja_devx/templates/app_template/models.py-tpl",
         ]:
             if required not in names:
                 raise RuntimeError(f"wheel is missing {required}")

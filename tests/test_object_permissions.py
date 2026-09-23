@@ -5,10 +5,10 @@ from django.test import override_settings
 from ninja import Schema
 from ninja.testing import TestAsyncClient, TestClient
 
+from ninja_devx.contrib.grants.backends import GrantsBackend
 from ninja_devx.crud import CRUDController, ObjectSharingMixin
 from ninja_devx.security.object_permissions import (
     DjangoBackend,
-    GrantsBackend,
     GuardianBackend,
     ObjectPermissions,
     assign_perm,

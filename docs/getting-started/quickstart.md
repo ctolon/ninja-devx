@@ -3,6 +3,9 @@
 A private notes API with search, filters, ordering, pagination, ownership and a custom
 action. The code below is `examples/quickstart`, included verbatim and tested in CI.
 
+To start from a generated project instead of reading along, see
+[`manage.py devx_startproject`](../guide/startproject.md).
+
 ## 1. A model
 
 ```python title="notes/models.py"
@@ -74,3 +77,7 @@ the interactive docs at `/api/docs`.
     ```
 
     See [Services and layers](../guide/layers.md) and `examples/recipes`.
+
+For everything else — permissions, tenancy, errors, hooks and the optional `contrib`
+apps — start at the [guides index](../guide/index.md). To see how a controller actually
+resolves, run [`devx_inspect`](../guide/inspect.md).

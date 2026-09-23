@@ -30,6 +30,9 @@ Base for controllers backed by a Django model.
 | `validate_model` | `bool` | `True` | Run `Model.full_clean()` before saving (for the default service); errors are 422. |
 | `refresh_after_write` | `bool` | `True` | Re-fetch through `scoped_queryset()` after writes so responses see its joins. |
 | `optimize_queries` | `bool \| Literal['only']` | `True` | Join/prefetch what the output schema renders; `"only"` also restricts columns. |
+| `related` | `Sequence[str]` | `()` | Explicit lookups the N+1 planner always loads (`("author", "comments__user")`), for resolvers or properties it cannot analyse. Also set with `@requires_related`. |
+| `expand_rules` | `Mapping[str, ExpandRule]` | `MappingProxyType({})` | How an expanded to-many relation is loaded (`{"comments": ExpandRule(limit=5)}`); keys must be `Expandable` fields of the output schema. |
+| `openapi_examples` | `bool` | `False` | Fill an OpenAPI example into the input and output schemas from `ninja_devx.testing.sample` (see `ninja_devx.serialization.examples.with_examples`). |
 
 ### List options (`ListMixin`, `ReadOnlyModelController`, `CRUDController`)
 
@@ -39,6 +42,7 @@ Filtering, search, ordering, pagination and selectors for list endpoints.
 |---|---|---|---|
 | `filter_schema` | `type[FilterSchema] \| None` | `None` | An explicit Ninja `FilterSchema` for `GET /` (instead of generated filters). |
 | `search_fields` | `Sequence[str]` | `()` | Fields searched with `icontains` by the `search_param` query parameter. |
+| `search_backend` | `SearchBackend[Model] \| None` | `None` | Replace the default `icontains` search (for example `PostgresSearch()`). |
 | `search_param` | `str` | `'search'` | Name of the search query parameter. |
 | `filter_fields` | `FilterFields` | `MappingProxyType({})` | Generated typed filters: `{"status": ("exact",), "created": ("gte", "lte")}`. |
 | `ordering_fields` | `Sequence[str]` | `()` | Fields the client may order by (`?ordering=-created`), validated as an enum. |
@@ -47,6 +51,16 @@ Filtering, search, ordering, pagination and selectors for list endpoints.
 | `pagination_class` | `type[PaginationBase] \| None` | `None` | A Ninja pagination class (or `CursorPagination`); defaults to `NINJA_DEVX["PAGINATION_CLASS"]`. |
 | `pagination_options` | `Mapping[str, object]` | `MappingProxyType({})` | Keyword arguments for the pagination class (`{"page_size": 50}`). |
 | `selector_class` | `type[Selector[Never, Model]] \| None` | `None` | A selector (resolved from the container when there is one) replacing `get_queryset` for lists. Querysets it returns are still ordered, paginated and optimized. |
+
+### `ExpandRule`
+
+How `?expand=` loads a to-many relation: filtered, ordered and capped per parent.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `filter` | `Q \| None` | `None` | Restricts the related rows, applied before `order_by` and `limit`. |
+| `order_by` | `tuple[str, ...]` | `()` | Ordering applied before `limit`; defaults to the related model's `Meta.ordering`. |
+| `limit` | `int \| None` | `None` | Rows kept per parent object. |
 
 ### Generated schemas (`AutoCRUDController`, `AutoReadOnlyController`)
 
@@ -81,6 +95,85 @@ def model_schemas(model: type[Model], *, fields: Sequence[str] | Literal['__all_
 |---|---|---|---|
 | `bulk_limit` | `int` | `100` | Maximum number of objects per bulk request (`NINJA_DEVX["BULK_LIMIT"]`). |
 
+### `BulkErrorDetail`
+
+One item of a bulk 207 entry's `errors`, in Ninja's validation error shape.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `type` | `str` | — | Ninja's validation error type (`"missing"`, `"value_error"`, ...). |
+| `loc` | `builtins.list[int \| str]` | — | Field path within the item, as Ninja reports it (without the item's own index). |
+| `msg` | `str` | — | Human-readable message. |
+
+`BulkResultOut`: `{"results": [{"index", "status", "data"} |
+{"index", "status", "errors"}]}`, the body of a partial-success (207) bulk
+response from `bulk_partial=True`; `errors` uses `BulkErrorDetail`, and the
+response carries an `X-Bulk-Failed` count header.
+
+### `NestedWritesMixin`
+
+Adds child collections to create and update, declared with `nested`.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `nested` | `Mapping[str, Nested]` | `MappingProxyType({})` | Child collections keyed by their field on the input schema. |
+
+### `Nested`
+
+One child collection written alongside its parent.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `model` | `type[Model]` | — | The child model. |
+| `field` | `str` | — | The child's foreign key to the parent. |
+| `schema` | `type[BaseModel]` | — | Input schema validating each item. |
+| `key` | `str` | `'id'` | Field matching a payload item against an existing child on update. |
+| `remove_missing` | `bool` | `True` | On update, delete existing children whose key is absent from the payload. |
+
+### `TransitionsMixin`
+
+Adds `POST /{pk}/<name>` for each declared transition and `GET /{pk}/transitions`.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `state_field` | `str` | `'status'` | The `CharField` holding the object's state. |
+| `transitions` | `Mapping[str, Transition]` | `MappingProxyType({})` | Transition name to `Transition`. |
+
+### `Transition`
+
+One named move from a set of source states to a target state.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `source` | `Sequence[str]` | — | States the object must be in for this transition to apply. |
+| `target` | `str` | — | State written when the transition succeeds. |
+| `permissions` | `Sequence[AnyPermission]` | `()` | Added to the controller's permissions for this transition's route only. |
+| `guard` | `Callable[[HttpRequest, Model], bool] \| None` | `None` | Extra precondition beyond the source state; `False` also answers 409. |
+| `on_transition` | `Callable[[HttpRequest, Model], None] \| None` | `None` | Called after the new state is saved, inside the write transaction. |
+
+### `MetaMixin` (`GET /meta`)
+
+Describes the input and output schemas for a form or admin UI: field
+types, required/read-only, max length and enum choices, plus
+`filter_fields`, `ordering_fields` and `search_fields`. No configuration.
+
+### `MetaMixin` schemas
+
+| Class | Arguments | Description |
+|---|---|---|
+| `ControllerMeta` | `input: dict[str, FieldMeta], output: dict[str, FieldMeta], filter_fields: list[str], ordering_fields: list[str], search_fields: list[str]` | The body of `GET /meta`. |
+| `FieldMeta` | `type: str, required: bool, read_only: bool, max_length: int \| None = None, choices: list[ChoiceOut] \| None = None` | What a form or admin UI needs to know about one schema field. |
+| `ChoiceOut` | `value: str \| int \| bool, label: str` | One `value`/`label` choice. |
+
+### `AggregateMixin`
+
+`GET /stats`: grouped counts and sums over the controller's scoped queryset.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `aggregate_fields` | `Sequence[str]` | `()` | Allow-list of model fields `group_by` may name. |
+| `aggregate_metrics` | `Mapping[str, Aggregate]` | `MappingProxyType({'count': Count('pk')})` | Allow-list of aggregate expressions `metrics` may name, by the name clients use. |
+
 ### `ExportMixin`
 
 `GET /export`: the filtered list as CSV or JSON Lines, streamed.
@@ -90,6 +183,7 @@ def model_schemas(model: type[Model], *, fields: Sequence[str] | Literal['__all_
 | `export_formats` | `Sequence[ExportFormat]` | `('csv', 'jsonl')` | Formats clients may ask for; the first is the default. |
 | `export_filename` | `str \| None` | `None` | Download name without extension (default: the model's plural name). |
 | `csv_escape_formulas` | `bool` | `True` | Prefix text cells starting with `= + - @` with `'` so spreadsheets don't run them. |
+| `export_sensitive` | `bool` | `False` | Include `Sensitive` output fields unmasked (default: exported as `"***"`). |
 
 ### `ImportMixin`
 
@@ -117,6 +211,7 @@ Marks objects deleted instead of deleting them and adds `POST /{pk}/restore`.
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `soft_delete` | `SoftDelete \| str` | `SoftDelete()` | A `SoftDelete` or just the field name. |
+| `soft_delete_cascade` | `Sequence[str]` | `()` | Related accessor names marked deleted/restored with this object (`("comments", "attachments")`). Only the configured marker field is cascaded. |
 
 ### `SoftDelete`
 
@@ -128,7 +223,35 @@ How a model marks deleted rows.
 | `deleted` | `object` | `INFER` | Value written on delete (or a zero-argument callable); inferred for boolean and nullable datetime fields. |
 | `active` | `object` | `INFER` | Value of rows that are not deleted, written on restore; inferred like `deleted`. |
 | `deleted_at` | `str \| None` | `None` | Also set this `DateTimeField` to now on delete (and clear it on restore). |
-| `deleted_by` | `str \| None` | `None` | Also set this foreign key to the current user on delete (and clear it on restore). |
+| `deleted_by` | `str \| None` | `None` | Also set this foreign key to the current user on delete (and clear it on restore). Defaults to `"deleted_by"` for models built on `SoftDeletable`. |
+
+### `soft_delete_unique()`
+
+```python
+def soft_delete_unique(model: type[Model], *fields: str, config: SoftDelete | None = None, name: str | None = None) -> UniqueConstraint: ...
+```
+
+A partial `UniqueConstraint` that only applies to active (not deleted) rows.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `model` | `type[Model]` | — | The model (used to resolve the marker field and its active value). |
+| `*fields` | `str` | — | The constrained fields. |
+| `config` | `SoftDelete \| None` | `None` | The `SoftDelete` configuration (default: `deleted_at`). |
+| `name` | `str \| None` | `None` | Constraint name (default derived from the table and fields). |
+
+### Model bases (`ninja_devx.models`)
+
+Abstract models for bookkeeping columns; controllers fill the user columns.
+
+| Base | Columns | Notes |
+|---|---|---|
+| `TimeStamped` | `created_at`, `updated_at` | `auto_now_add`/`auto_now`; `created_at` is indexed |
+| `UserStamped` | `created_by`, `updated_by` | nullable `AUTH_USER_MODEL` keys (`SET_NULL`), set from the request user on create and update |
+| `Stamped` | all of the above | |
+| `SoftDeletable` | `deleted_at`, `deleted_by` | the defaults `SoftDeleteMixin` uses without a `soft_delete` configuration |
+
+Every column is `editable=False` and is left out of generated input schemas.
 
 ### `Parent`
 
@@ -151,6 +274,13 @@ Scope a model controller to a parent object taken from the URL.
 | `require_if_match` | `bool` | `False` | Writes without `If-Match` fail with 428 Precondition Required. |
 | `lists` | `bool` | `True` | Also tag list responses (from their rendered body). |
 
+### Search backends
+
+| Class | Arguments | Description |
+|---|---|---|
+| `IContainsSearch` | — | Case-insensitive substring match across the fields, as a backend. |
+| `PostgresSearch` | `*, config: str = 'english'` | PostgreSQL full-text search across the fields with a shared language config. |
+
 ### `LimitOffsetPagination`
 
 `pagination_class = LimitOffsetPagination` with `pagination_options`:
@@ -159,7 +289,7 @@ Scope a model controller to a parent object taken from the URL.
 |---|---|---|---|
 | `limit` | `int` | `100` | page size when the client sends no `?limit=` |
 | `max_limit` | `int` | `1000` | upper bound for `?limit=` |
-| `count` | `bool` | `True` | run `COUNT(*)` for `count`; `False` returns `null` (cheap on big tables) |
+| `count` | `bool \| Literal["estimate"] \| int` | `True` | `True`: exact `COUNT(*)`. `False`: no count query, `null`, one extra row fetched instead. `"estimate"`: `pg_class.reltuples` on PostgreSQL for an unfiltered queryset, exact otherwise. `N`: exact up to `N` rows, then `N` with `X-Total-Count: N+` |
 | `max_offset` | `int \| None` | `None` | reject deeper `?offset=` with 422 |
 
 Query parameters: `limit`, `offset`. The response is

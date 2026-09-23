@@ -4,6 +4,111 @@ All notable changes to this project are documented here. ninja-devx follows
 [semantic versioning](https://semver.org); see the support and stability page for what
 that means before 1.0.
 
+## 0.0.2
+
+Second alpha. Focuses on module boundaries, introspection, explicit query planning and a
+wider client generator. APIs may still change before 1.0.
+
+### Added
+
+- `devx_inspect` command: prints the resolved policy for a mounted controller (tenant,
+  owner, parent, permissions, transaction, idempotency, pagination, relations and hooks)
+  as a tree or JSON.
+- `@requires_related(...)` and the `related` controller attribute: explicit
+  `select_related`/`prefetch_related` hints the N+1 planner applies when a schema cannot
+  be analysed statically. System check `ninja_devx.W006` validates the hints.
+- `ninja_devx.cqrs`: `use_query` (read handlers, symmetric to `use_case`), optional
+  `Command`/`Query` markers, `DomainEvent` + `EventBus` delivered after commit through a
+  `TaskQueue`, and `UnitOfWork` for multi-repository transactions. No command bus or
+  global registry.
+- HTTP middleware: `SecurityHeadersMiddleware` (HSTS/CSP/referrer/frame options),
+  request hardening (`MaxBodySizeMiddleware`, `EnforceContentTypeMiddleware`,
+  `JsonDepthMiddleware`), `ResponseCacheMiddleware` with prefix invalidation (`private`
+  when varying on credentials), and `PaginationHeadersMiddleware` (RFC 8288 `Link` for
+  offset and cursor pagination, `X-Total-Count` for counted offset pages). Rejections use
+  the package error format.
+- `devx_openapi --against baseline.json`: fail on breaking OpenAPI changes (removed
+  operations/fields, new required input, type/enum/array item changes); additive changes
+  are reported. With `--output` the current document is written after the comparison.
+- Pluggable `SearchBackend` for list search (`IContainsSearch`, `PostgresSearch`); the
+  `search` parameter stays in the filter schema and OpenAPI.
+- Write-side field visibility: `WriteVisibleTo(permission)` on input schemas; model
+  controllers reject forbidden fields on create/update with 403.
+- Soft-delete helpers: `soft_delete_cascade` marks related objects with the parent, and
+  `soft_delete_unique(Model, "field")` builds a partial unique constraint for active rows.
+- Abstract model bases in `ninja_devx.models`: `TimeStamped` (`created_at`/`updated_at`),
+  `UserStamped` (`created_by`/`updated_by`, filled from the request user on create, update,
+  bulk update and import), `Stamped` (both) and `SoftDeletable` (`deleted_at`/`deleted_by`,
+  used by `SoftDeleteMixin` without configuration). The columns are `editable=False`, so
+  generated input schemas and scaffolding leave them out.
+- Task queue adapters in `ninja_devx.contrib.tasks`: Celery, Dramatiq, RQ, Taskiq, Temporal
+  and FastStream behind the existing `TaskQueue` protocol, plus a generic
+  `DeferredTaskQueue`.
+- `ninja_devx.testing`: `sample`/`samples` build valid, JSON-serialisable request payloads
+  from a schema and raise `TypeError` for a field type they cannot fill.
+- `devx_apikey rotate` and `rotate_api_key` replace a key's secret in place; revoked keys
+  are refused and `rate_limit=None` clears the limit.
+- `APIPlugin`/`install`: bundle API middleware, error rules and startup work; error rules
+  from all plugins are merged into one `ErrorMap`.
+- Client generation: OpenAPI `discriminator` (tagged unions) for Python and TypeScript,
+  multipart bodies without a required file, cookie parameters, and `text/event-stream`
+  responses as a Python line iterator (`Iterator[str]`/`AsyncIterator[str]`). Documented
+  non-2xx JSON responses are exposed on the parsed operation (`Operation.errors`). The
+  TypeScript client rejects streaming. Clients without cookie or streaming operations
+  regenerate unchanged.
+- `benchmarks/frameworks/`: a cross-framework workload characterization over one HTTP
+  contract (Django Ninja, ninja-devx and optional DRF/Ninja-Extra adapters); a local tool,
+  not a CI gate.
+- Query tuning: `expand_rules` lets a controller filter, order and cap how many rows
+  `?expand=` loads per parent (window function on Django 5+, correlated subquery on 4.2);
+  `QueryExplainMiddleware` adds `X-Query-Count`/`X-Query-Time`/`X-Query-Plan` headers in
+  development; and `LimitOffsetPagination(count=...)` also accepts `"estimate"`
+  (PostgreSQL `reltuples`) and an integer threshold (`X-Total-Count: N+`).
+- Nested writes (`NestedWritesMixin`, `Nested`) for creating/updating a parent and its
+  child collections in one request and transaction, and change tracking
+  (`ModelController.on_change`, `changed_fields()`) for PUT/PATCH and bulk updates.
+- `TransitionsMixin`/`Transition` for API-level state transitions on model controllers
+  (`POST /{pk}/<name>`, `GET /{pk}/transitions`) with permissions, guards, row locking and
+  a 409 `invalid_transition` error.
+- `bulk_partial` on `BulkCreateMixin`/`BulkUpdateMixin`: per-item savepoints and a 207
+  partial-success response (`results`, `X-Bulk-Failed` header).
+- A metadata endpoint (`MetaMixin`), an aggregation endpoint (`AggregateMixin`), response
+  versioning (`VersionedResponseMixin`), and OpenAPI examples generated from sample data
+  (`with_examples`/`openapi_examples`).
+- Pluggable throttle storage (with a Redis-backed exact fixed window), a
+  `RequestLogPlugin` for structured per-request logs, and a `Sensitive` field marker
+  applied to CRUD exports, validation-error bodies and the audit log.
+- `ninja_devx.contrib.jobs`: background jobs tracked as `Job` rows, started with
+  `start_job`/`@job`, polled through `JobsController`, with `devx_jobs prune`/`retry`
+  maintenance (new app; add to `INSTALLED_APPS` and migrate).
+- Runtime N+1 detection (`ninja_devx.contrib.nplusone`, an adapter over django-zeal) with
+  a `strict_queries` test fixture, and the `devx_doctor` management command for
+  configuration-risk findings beyond `manage.py check`.
+- `manage.py devx_startproject`: generates a runnable ninja-devx project (settings,
+  hardened API, health check, JSON logging, DATABASE_URL-based database, Postgres compose
+  file) with optional `--app` and `--no-docker`.
+
+### Changed
+
+- `GrantsBackend` moved from `ninja_devx.security.object_permissions` to
+  `ninja_devx.contrib.grants.backends`; update imports. The built-in object-permission
+  registry resolves backends by name.
+- Core packages no longer import `ninja_devx.crud` or `ninja_devx.contrib`; a test
+  enforces the boundary.
+- The Docker validation enforces a 90% statement/branch coverage floor
+  (`tools/verify_local.py --fail-under`).
+- Documentation: new **CQRS and DDD** and **Inspecting controllers** guides, expanded
+  typing and mounting pages, a guide link on every configuration-reference page, and a
+  dedicated Migrations section in the navigation.
+- `LimitOffsetPagination(count=...)` widens from `bool` to `bool | Literal["estimate"] |
+  int`; existing `True`/`False` usage is unaffected. `RateThrottle(storage=...)` is
+  additive; throttles default to `CacheThrottleStorage` as before.
+
+### Fixed
+
+- Release documentation reflects that 0.0.1 is published.
+- `tools/messages.py` accepts `--language` so it is usable without a shipped catalog.
+
 ## 0.0.1
 
 First alpha release candidate. The section below is the reviewed release content;

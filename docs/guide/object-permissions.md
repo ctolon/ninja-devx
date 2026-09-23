@@ -52,9 +52,9 @@ def publish(self, request: HttpRequest, document: Instance[Document]) -> Documen
 
 | Backend | Storage | Lists filtered | Install |
 |---|---|---|---|
-| `GrantsBackend` | `ninja_devx.contrib.grants` (one table, no dependency) | ✅ one `EXISTS` subquery | `INSTALLED_APPS += ["ninja_devx.contrib.grants"]` |
-| `GuardianBackend` | django-guardian's tables | ✅ | `pip install "ninja-devx[guardian]"` |
-| `DjangoBackend` | whatever your `AUTHENTICATION_BACKENDS` implement | ❌ checks only | nothing |
+| `GrantsBackend` | `ninja_devx.contrib.grants` (one table, no dependency) | yes, one `EXISTS` subquery | `INSTALLED_APPS += ["ninja_devx.contrib.grants"]` |
+| `GuardianBackend` | django-guardian's tables | yes | `pip install "ninja-devx[guardian]"` |
+| `DjangoBackend` | whatever your `AUTHENTICATION_BACKENDS` implement | no, checks only | nothing |
 
 The backend is picked in this order: `NINJA_DEVX["OBJECT_PERMISSION_BACKEND"]` (an instance
 or an import path), then the grants app when it is installed, then django-guardian when it

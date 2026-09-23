@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
+    from .cqrs import Command, DomainEvent, EventBus, Query, UnitOfWork
     from .dependencies.container import (
         AsyncRequestScopeProvider,
         AsyncResolver,
@@ -58,7 +59,7 @@ if TYPE_CHECKING:
         put,
     )
     from .routing.plugins import ControllerPlugin
-    from .routing.use_cases import use_case
+    from .routing.use_cases import use_case, use_query
     from .security.auth import (
         AuthedRequest,
         aauthenticated_user,
@@ -86,8 +87,9 @@ if TYPE_CHECKING:
         as_permission,
     )
     from .security.tenancy import MissingTenant, current_tenant
+    from .serialization.privacy import Sensitive
     from .serialization.schemas import Input, Output, Patch, PatchData, ReadOnly, WriteOnly
-    from .serialization.visibility import FieldVisibility, VisibleTo
+    from .serialization.visibility import FieldVisibility, VisibleTo, WriteVisibleTo
 
 _EXPORTS: Final[Mapping[str, str]] = MappingProxyType(
     {
@@ -168,8 +170,16 @@ _EXPORTS: Final[Mapping[str, str]] = MappingProxyType(
         "current_tenant": ".security.tenancy",
         "MissingTenant": ".security.tenancy",
         "use_case": ".routing.use_cases",
+        "use_query": ".routing.use_cases",
+        "Command": ".cqrs",
+        "Query": ".cqrs",
+        "DomainEvent": ".cqrs",
+        "EventBus": ".cqrs",
+        "UnitOfWork": ".cqrs",
         "FieldVisibility": ".serialization.visibility",
         "VisibleTo": ".serialization.visibility",
+        "WriteVisibleTo": ".serialization.visibility",
+        "Sensitive": ".serialization.privacy",
     }
 )
 
@@ -184,6 +194,7 @@ __all__ = [
     "BasePermission",
     "BlockingCallWarning",
     "CircularDependencyError",
+    "Command",
     "Container",
     "ContainerLike",
     "Controller",
@@ -193,8 +204,10 @@ __all__ = [
     "DenyAll",
     "DependencyResolutionError",
     "DjangoModelPermissions",
+    "DomainEvent",
     "ETag",
     "ErrorMap",
+    "EventBus",
     "FieldVisibility",
     "HasDjangoPermission",
     "Inject",
@@ -221,14 +234,18 @@ __all__ = [
     "PatchData",
     "PreconditionFailed",
     "PreconditionRequired",
+    "Query",
     "ReadOnly",
     "RequestScopeProvider",
     "Resolve",
     "Resolver",
     "RouteOptions",
     "Scope",
+    "Sensitive",
+    "UnitOfWork",
     "VisibleTo",
     "WriteOnly",
+    "WriteVisibleTo",
     "aauthenticated_user",
     "acurrent_user",
     "api_operation",
@@ -253,12 +270,13 @@ __all__ = [
     "request_user",
     "resolve",
     "use_case",
+    "use_query",
 ]
 
 try:
     __version__ = version("ninja-devx")
 except PackageNotFoundError:  # pragma: no cover - running from a source tree
-    __version__ = "0.0.1"
+    __version__ = "0.0.2"
 
 
 def __getattr__(name: str) -> object:

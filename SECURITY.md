@@ -16,8 +16,7 @@ attention.
 
 ## Supported releases
 
-0.0.1 is the first alpha release candidate. After publication, security fixes target the
-latest released version. Older alpha versions have no promised backport window. A security
+Releases are alpha versions; security fixes target the latest released version. Older alpha versions have no promised backport window. A security
 fix may require a behavior change; release notes must describe the changed contract and
 migration steps. The [support policy](https://ctolon.github.io/ninja-devx/project/support/)
 lists framework compatibility separately from upstream security support.

@@ -38,6 +38,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from ..layers.errors import ValidationFailed
 from ..routing.operations import async_variant, get, post
+from ..serialization.privacy import redact_payload
 from .annotations import Filters, Ordering, OrderingSchema
 from .controllers import CreateHooks, InT, ListConfig, ModelT, OutT
 from .writes import write_scope
@@ -110,6 +111,8 @@ class ExportMixin(ListConfig[ModelT, OutT], Generic[ModelT, OutT]):
     """Download name without extension (default: the model's plural name)."""
     csv_escape_formulas: ClassVar[bool] = True
     """Prefix text cells starting with ``= + - @`` with ``'`` so spreadsheets don't run them."""
+    export_sensitive: ClassVar[bool] = False
+    """Include ``Sensitive`` output fields unmasked (default: exported as ``"***"``)."""
 
     @get(
         "/export",
@@ -153,7 +156,9 @@ class ExportMixin(ListConfig[ModelT, OutT], Generic[ModelT, OutT]):
             iterator = iter(rows)
             take = sync_to_async(_take, thread_sensitive=True)
             encoder = self._encoder(query.format)
-            while chunk := await take(iterator, request, type(self).output_schema(), _CHUNK):
+            schema = type(self).output_schema()
+            redact = not type(self).export_sensitive
+            while chunk := await take(iterator, request, schema, _CHUNK, redact=redact):
                 for item in chunk:
                     yield encoder(item)
 
@@ -184,8 +189,10 @@ class ExportMixin(ListConfig[ModelT, OutT], Generic[ModelT, OutT]):
         self, request: HttpRequest, rows: Iterator[Model] | builtins.list[Model], format: str
     ) -> Iterator[str]:
         encoder = self._encoder(format)
+        schema = type(self).output_schema()
+        redact = not type(self).export_sensitive
         for obj in rows:
-            yield encoder(_dump(type(self).output_schema(), request, obj))
+            yield encoder(_dump(schema, request, obj, redact=redact))
 
     def _response(
         self, lines: Iterator[str] | AsyncIterator[str], format: str
@@ -205,18 +212,26 @@ def _jsonl(data: object) -> str:
     return json.dumps(data, cls=DjangoJSONEncoder, separators=(",", ":")) + "\n"
 
 
-def _dump(schema: type[BaseModel] | None, request: HttpRequest, obj: Model) -> object:
+def _dump(
+    schema: type[BaseModel] | None, request: HttpRequest, obj: Model, *, redact: bool
+) -> object:
     if schema is None:
         raise HttpError(500, "The controller has no output schema")
-    return schema.model_validate(obj, context={"request": request}).model_dump(
+    data = schema.model_validate(obj, context={"request": request}).model_dump(
         mode="json", context={"request": request}, by_alias=True
     )
+    return redact_payload(schema, data) if redact else data
 
 
 def _take(
-    iterator: Iterator[Model], request: HttpRequest, schema: type[BaseModel] | None, size: int
+    iterator: Iterator[Model],
+    request: HttpRequest,
+    schema: type[BaseModel] | None,
+    size: int,
+    *,
+    redact: bool,
 ) -> builtins.list[object]:
-    return [_dump(schema, request, obj) for obj in islice(iterator, size)]
+    return [_dump(schema, request, obj, redact=redact) for obj in islice(iterator, size)]
 
 
 class ImportMixin(CreateHooks[ModelT, InT], Generic[ModelT, InT]):

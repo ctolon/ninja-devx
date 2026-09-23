@@ -30,15 +30,13 @@ import importlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Final, Protocol, TypeVar, cast, runtime_checkable
+from typing import Final, Protocol, TypeAlias, TypeVar, cast, runtime_checkable
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
 from django.apps import apps
-from django.contrib.auth.models import Group
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import CharField, Exists, Model, OuterRef, Q, QuerySet
-from django.db.models.functions import Cast
+from django.db.models import Model, QuerySet
 from django.http import Http404, HttpRequest
 from django.utils.module_loading import import_string
 from django.utils.translation import gettext_noop
@@ -52,7 +50,6 @@ __all__ = [
     "DEFAULT_PERMS_MAP",
     "DjangoBackend",
     "Grant",
-    "GrantsBackend",
     "GuardianBackend",
     "ObjectPermissionBackend",
     "ObjectPermissionStore",
@@ -62,8 +59,11 @@ __all__ = [
     "get_objects_for_user",
     "get_perms",
     "grants_for",
+    "register_object_permission_backend",
+    "registered_object_permission_backends",
     "remove_perm",
 ]
+
 
 ModelT = TypeVar("ModelT", bound=Model)
 
@@ -138,96 +138,6 @@ class DjangoBackend:
         )
 
 
-class GrantsBackend:
-    """Grants stored in ``ninja_devx.contrib.grants.ObjectGrant``."""
-
-    def has_perm(self, user: object, perm: str, obj: Model, /) -> bool:
-        from ..contrib.grants.backends import object_permissions_of
-
-        return _is_superuser(user) or perm in object_permissions_of(user, obj)
-
-    def filter_queryset(
-        self, user: object, perms: Sequence[str], queryset: QuerySet[ModelT], /
-    ) -> QuerySet[ModelT]:
-        from django.contrib.contenttypes.models import ContentType
-
-        from ..contrib.grants.models import ObjectGrant
-
-        if _is_superuser(user):
-            return queryset
-        if not getattr(user, "is_active", False) or getattr(user, "pk", None) is None:
-            return queryset.none()
-        content_type = ContentType.objects.get_for_model(queryset.model)
-        holders = Q(user=user) | Q(group__user=user)
-        for perm in perms:
-            app_label, codename = _split(perm)
-            granted = ObjectGrant.objects.filter(
-                holders,
-                content_type=content_type,
-                object_pk=Cast(OuterRef("pk"), output_field=CharField()),
-                permission__codename=codename,
-                permission__content_type__app_label=app_label,
-            )
-            queryset = queryset.filter(Exists(granted))
-        return queryset
-
-    def assign(self, perm: str, holder: object, obj: Model, /) -> None:
-        from django.contrib.auth.models import Permission
-        from django.contrib.contenttypes.models import ContentType
-
-        from ..contrib.grants.models import ObjectGrant
-
-        app_label, codename = _split(perm)
-        permission = Permission.objects.get(content_type__app_label=app_label, codename=codename)
-        content_type = ContentType.objects.get_for_model(obj)
-        if isinstance(holder, Group):
-            ObjectGrant.objects.get_or_create(
-                permission=permission,
-                content_type=content_type,
-                object_pk=str(obj.pk),
-                group=holder,
-            )
-        else:
-            ObjectGrant.objects.get_or_create(
-                permission=permission,
-                content_type=content_type,
-                object_pk=str(obj.pk),
-                user=cast("Model", holder),
-            )
-        _forget(holder)
-
-    def remove(self, perm: str, holder: object, obj: Model, /) -> None:
-        from django.contrib.contenttypes.models import ContentType
-
-        from ..contrib.grants.models import ObjectGrant
-
-        app_label, codename = _split(perm)
-        target = {"group": holder} if isinstance(holder, Group) else {"user": holder}
-        ObjectGrant.objects.filter(
-            content_type=ContentType.objects.get_for_model(obj),
-            object_pk=str(obj.pk),
-            permission__codename=codename,
-            permission__content_type__app_label=app_label,
-            **target,
-        ).delete()
-        _forget(holder)
-
-    def grants(self, obj: Model, /) -> list[Grant]:
-        from django.contrib.contenttypes.models import ContentType
-
-        from ..contrib.grants.models import ObjectGrant
-
-        rows = ObjectGrant.objects.filter(
-            content_type=ContentType.objects.get_for_model(obj), object_pk=str(obj.pk)
-        ).values_list(
-            "user_id",
-            "group_id",
-            "permission__content_type__app_label",
-            "permission__codename",
-        )
-        return _collect(rows)
-
-
 def _guardian(module: str, name: str) -> Callable[..., object]:
     """A django-guardian function, typed loosely on purpose (guardian's own hints use Any)."""
     found: Callable[..., object] = getattr(importlib.import_module(f"guardian.{module}"), name)
@@ -245,7 +155,7 @@ class GuardianBackend:
             checker = _guardian("core", "ObjectPermissionChecker")(user)
             setattr(user, "_ninja_devx_guardian", checker)  # noqa: B010 - cached per user object
         _, codename = _split(perm)
-        check: Callable[[str, Model], object] = getattr(checker, "has_perm")  # noqa: B009
+        check: Callable[[str, Model], object] = getattr(checker, "has_perm")  # noqa: B009 - typed
         return bool(check(codename, obj))
 
     def filter_queryset(
@@ -305,6 +215,24 @@ def _forget(holder: object) -> None:
         state.pop(attribute, None)
 
 
+BackendFactory: TypeAlias = Callable[[], "ObjectPermissionBackend"]
+_BACKENDS: dict[str, BackendFactory] = {}
+
+
+def register_object_permission_backend(name: str, factory: BackendFactory) -> None:
+    """Register a backend so ``get_backend`` can select it by name.
+
+    Apps register in ``AppConfig.ready`` (``ninja_devx.contrib.grants`` registers
+    ``"grants"``); core never imports contrib.
+    """
+    _BACKENDS[name] = factory
+
+
+def registered_object_permission_backends() -> tuple[str, ...]:
+    """Names of the currently registered backends."""
+    return tuple(sorted(_BACKENDS))
+
+
 def get_backend() -> ObjectPermissionBackend:
     configured = get_settings().object_permission_backend
     if configured is not None:
@@ -314,8 +242,9 @@ def get_backend() -> ObjectPermissionBackend:
                 f"{SETTINGS_NAME}['OBJECT_PERMISSION_BACKEND'] is not an ObjectPermissionBackend"
             )
         return backend
-    if apps.is_installed("ninja_devx.contrib.grants"):
-        return GrantsBackend()
+    factory = _BACKENDS.get("grants")
+    if factory is not None:
+        return factory()
     if apps.is_installed("guardian"):
         return GuardianBackend()
     return DjangoBackend()

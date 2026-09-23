@@ -16,6 +16,13 @@ by ``as_router()`` itself.
                           attribute nor resolved by the schema
 ``ninja_devx.E004``        ``service_class`` needs constructor arguments but the
                           controller is mounted without a container
+``ninja_devx.W005``        an output field ``VisibleTo`` can hide is required instead
+                          of optional
+``ninja_devx.W006``        a ``related``/``@requires_related`` hint is not a relation
+                          path of the model
+``ninja_devx.W007``        ``expand_rules[...].limit`` targets a relation that is not a
+                          plain reverse foreign key
+``ninja_devx.E007``        ``aggregate_fields`` names a missing model field
 ========================  ===========================================================
 """
 
@@ -63,6 +70,19 @@ CHECKS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
             "warning",
             "An output field that ``VisibleTo`` can hide is required instead of optional.",
         ),
+        "ninja_devx.W006": (
+            "warning",
+            "A ``related`` hint or ``@requires_related`` lookup is not a relation of the model.",
+        ),
+        "ninja_devx.W007": (
+            "warning",
+            "``expand_rules[...].limit`` targets a relation that is not a plain reverse "
+            "foreign key, so it is prefetched without a cap.",
+        ),
+        "ninja_devx.E007": (
+            "error",
+            "``aggregate_fields`` names a field that does not exist on the model.",
+        ),
     }
 )
 """Every system check id with its level and meaning (also rendered in the docs)."""
@@ -83,7 +103,7 @@ def check_controllers(
             if api is not None:
                 built.extend(_api_controllers(api))
     else:
-        _load_urlconf()
+        load_urlconf()
         built = built_routers()
     seen: set[type[object]] = set()
     for entry in built:
@@ -136,7 +156,8 @@ def _api_controllers(api: NinjaAPI) -> list[BuiltRouter]:
     return found
 
 
-def _load_urlconf() -> None:
+def load_urlconf() -> None:
+    """Import the URLconf so every API and controller module is loaded."""
     from django.urls import get_resolver
 
     with suppress(Exception):  # Django's own URL checks report a broken URLconf

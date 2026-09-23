@@ -27,6 +27,7 @@ them; unknown keys raise `ImproperlyConfigured`. See the [Settings guide](../gui
 | `TENANT_RESOLVER` | `Callable[[HttpRequest], object] \| str` | `None` | A function of the request returning the tenant (sync or async), or its import path. |
 | `TENANT_CONTEXT` | `object` | `None` | A `RequestContext[User, Tenant]` key (or its import path) whose `tenant` is used. |
 | `THROTTLE_RATES` | `Mapping[str, str \| None]` | `{}` | Rates for `ScopedRateThrottle` scopes, e.g. `{"uploads": "10/min"}`. |
+| `THROTTLE_STORAGE` | `object` | `None` | A `ThrottleStorage` (or its import path) used by throttles without their own `storage=`; default: cache-based fixed windows. |
 | `OBJECT_PERMISSION_BACKEND` | `object` | `None` | An `ObjectPermissionBackend` (or its import path); default: grants, guardian, Django. |
 | `CHECK_APIS` | `Sequence[str]` | `()` | `NinjaAPI` import paths validated by `manage.py check`. |
 | `WEBHOOK_SECRET_KEYS` | `Sequence[str]` | `()` | Fernet keys encrypting webhook signing secrets at rest (`ninja-devx[crypto]`); the first encrypts, all decrypt. Empty: secrets are stored as they are. |

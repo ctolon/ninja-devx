@@ -157,3 +157,13 @@ mount(api, ROUTES, plugins=[TenantHeader()])  # or NINJA_DEVX["PLUGINS"]
 A plugin rewrites operations, adds hidden parameters to every controller it is given,
 and may define `checks(controller)` for [system checks](checks.md). Plugins are listed
 explicitly; there is no entry-point discovery.
+
+## Seeing what runs
+
+[`devx_inspect`](inspect.md) prints the controller's resolved options, scoping,
+permissions, relations and operations, which is the fastest way to confirm what a
+configuration actually produced.
+
+```bash
+python manage.py devx_inspect app.api.PostController
+```

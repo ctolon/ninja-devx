@@ -1,0 +1,43 @@
+"""The mounted API: middleware, error mapping and health checks.
+
+``manage.py check`` inspects this module through ``NINJA_DEVX["CHECK_APIS"]`` in
+``config/settings.py``.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from ninja import NinjaAPI
+from ninja_devx import Container, ErrorMap, mount
+from ninja_devx.http.hardening import (
+    EnforceContentTypeMiddleware,
+    JsonDepthMiddleware,
+    MaxBodySizeMiddleware,
+)
+from ninja_devx.http.health import HealthController
+from ninja_devx.http.middleware import Middleware, RequestIDMiddleware
+from ninja_devx.http.security import SecurityHeadersMiddleware
+from ninja_devx.plugins import APIPlugin, install
+
+
+class Hardening(APIPlugin):
+    """Request ids, security headers, and body/media-type/depth limits on every operation."""
+
+    def middleware(self) -> Sequence[Middleware]:
+        return [
+            RequestIDMiddleware(),
+            SecurityHeadersMiddleware(),
+            MaxBodySizeMiddleware(5_000_000),
+            EnforceContentTypeMiddleware({"application/json"}),
+            JsonDepthMiddleware(),
+        ]
+
+    def errors(self) -> ErrorMap | None:
+        return ErrorMap.django_defaults()
+
+
+api = NinjaAPI(title="{{ project_name }}", version="1.0.0")
+container = Container()
+install(api, [Hardening()])
+mount(api, {"/health": HealthController}, container=container)

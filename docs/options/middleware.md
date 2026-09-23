@@ -67,7 +67,26 @@ The id `RequestIDMiddleware` accepted or created for `request`.
 |---|---|---|
 | `ServerTimingMiddleware` | — | `Server-Timing: app;dur=<ms>` for browser dev tools and APM. |
 | `RateLimitHeadersMiddleware` | — | `RateLimit-Limit/Remaining/Reset` and `RateLimit-Policy` from ninja-devx throttles. |
+| `SecurityHeadersMiddleware` | `*, hsts: str \| None = None, csp: str \| None = None, referrer_policy: str = 'same-origin', frame_options: str \| None = 'DENY', permissions_policy: str \| None = _PERMISSIONS_POLICY, nosniff: bool = True, extra: Mapping[str, str] \| None = None` | Set security headers on every response unless the response already has them. |
+| `ResponseCacheMiddleware` | `*, ttl: int = 60, vary_on: Sequence[str] = (), cache: str = 'default', key_prefix: str = '', methods: Sequence[str] = ('GET', 'HEAD')` | Serve matching responses from the cache and store new ones. |
+| `MaxBodySizeMiddleware` | `max_bytes: int` | Reject requests whose `Content-Length` exceeds `max_bytes` with 413. |
+| `EnforceContentTypeMiddleware` | `media_types: Collection[str], *, methods: Collection[str] = _BODY_METHODS` | Reject write requests whose media type is not allowed, with 415. |
+| `JsonDepthMiddleware` | `max_depth: int = 32` | Reject JSON bodies nested deeper than `max_depth` with 400. |
+| `PaginationHeadersMiddleware` | — | Copy pagination metadata recorded by the paginator onto response headers. |
 | `OpenTelemetryMetricsMiddleware` | `meter: Meter \| None = None` | HTTP server metrics per operation (OpenTelemetry semantic conventions). |
+
+### `invalidate_cache()`
+
+```python
+def invalidate_cache(prefix: str = '', *, cache: str = 'default') -> None: ...
+```
+
+Invalidate every cached response under `prefix`.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `prefix` | `str` | `''` | The same prefix passed to `ResponseCacheMiddleware`. |
+| `cache` | `str` | `'default'` | Cache alias. |
 
 ### `record_rate_limit()`
 
@@ -85,6 +104,84 @@ Remember a throttle's state for `RateLimitHeadersMiddleware` (throttles call it)
 | `remaining` | `int` | — | Requests left in the current window. |
 | `reset` | `float` | — | Seconds until the window resets. |
 | `window` | `int` | — | Window length in seconds. |
+
+### `QueryExplainMiddleware()`
+
+```python
+def QueryExplainMiddleware(*, enabled: bool | None = None, databases: Sequence[str] = ()) -> None: ...
+```
+
+Add query diagnostics headers to matching responses.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `bool \| None` | `None` | Forces the middleware on or off; `None` (the default) follows `settings.DEBUG` on every request, so `override_settings(DEBUG=...)` works. |
+| `databases` | `Sequence[str]` | `()` | Database aliases to count; defaults to every configured alias. |
+
+### `VersionedResponseMixin`
+
+Adds `Accept-Version` negotiation to every operation of a controller.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `response_versions` | `Mapping[int, type[BaseModel]]` | `MappingProxyType({})` | Older response schemas, keyed by the version clients ask for with `Accept-Version`. The latest version is implicitly one more than the highest key here. |
+| `response_version_header` | `str` | `'Accept-Version'` | Request header naming the wanted version. |
+| `response_version_response_header` | `str` | `'X-API-Version'` | Response header naming the version actually served. |
+
+### `VersionedResponseMiddleware()`
+
+```python
+def VersionedResponseMiddleware(response_versions: Mapping[int, type[BaseModel]], *, header: str = 'Accept-Version', response_header: str = 'X-API-Version') -> None: ...
+```
+
+Negotiate `Accept-Version` and downgrade the rendered response.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `response_versions` | `Mapping[int, type[BaseModel]]` | — | `{version: schema}` for every version but the latest. |
+| `header` | `str` | `'Accept-Version'` | Request header naming the wanted version. |
+| `response_header` | `str` | `'X-API-Version'` | Response header naming the version actually served. |
+
+### `RequestLogMiddleware`
+
+Logs one record per request. Install directly, or through `RequestLogPlugin`.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `logger` | `logging.Logger` | `field(default_factory=lambda: logging.getLogger('ninja_devx.request'))` | Logger receiving one record per request. |
+| `level` | `int` | `logging.INFO` | Log level of the record. |
+| `naming` | `Naming` | `'otel'` | `"otel"`: OpenTelemetry semantic convention field names; `"flat"`: plain ones. |
+| `bind_structlog` | `bool` | `True` | Bind the identity fields to `structlog.contextvars` when structlog is installed. |
+
+### `RequestLogPlugin`
+
+`RequestLogMiddleware` plus `RequestIDMiddleware`, so every request gets an id.
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `logger` | `logging.Logger` | `field(default_factory=lambda: logging.getLogger('ninja_devx.request'))` | Logger receiving one record per request. |
+| `level` | `int` | `logging.INFO` | Log level of the record. |
+| `naming` | `Naming` | `'otel'` | `"otel"`: OpenTelemetry semantic convention field names; `"flat"`: plain ones. |
+| `bind_structlog` | `bool` | `True` | Bind the identity fields to `structlog.contextvars` when structlog is installed. |
+| `include_request_id` | `bool` | `True` | Add `RequestIDMiddleware` too, so `request_id` is never empty. |
+
+### `register_api_key_reader()`
+
+```python
+def register_api_key_reader(reader: ApiKeyReader) -> None: ...
+```
+
+Let `ninja_devx.contrib.apikeys` (or your own auth) contribute `api_key_prefix`.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `reader` | `ApiKeyReader` | — | Returns the authenticating key's prefix, or `None`. |
+
+### Log formatting
+
+| Class | Arguments | Description |
+|---|---|---|
+| `JSONFormatter` | — | Render each `LogRecord` as one JSON object, `extra` fields included. |
 
 ### `HealthController`
 

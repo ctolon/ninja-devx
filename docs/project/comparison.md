@@ -7,7 +7,7 @@ specific policy must be implemented or obtained from another package. It does no
 that the behavior is impossible.
 
 The upstream columns describe their documented interfaces, checked on 13 September 2026.
-The ninja-devx column describes the 0.0.1 alpha source. No cross-framework latency or
+The ninja-devx column describes the 0.0.2 alpha source. No cross-framework latency or
 security ranking is implied. Third-party DRF/Ninja packages can change the comparison.
 
 ## Programming and compatibility model

@@ -7,7 +7,7 @@ they expect disappears.
 
 import time as time_module
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import ClassVar, Protocol, assert_type
 
 from django.db.models import QuerySet
@@ -29,7 +29,8 @@ from ninja_devx import (
     get,
     post,
 )
-from ninja_devx.crud import CRUDController, Lookup, Patch
+from ninja_devx.cqrs import QueryHandler
+from ninja_devx.crud import CRUDController, Lookup, Patch, SearchBackend
 from ninja_devx.testing.clients import client_for
 from tests.testapp.models import Article
 
@@ -343,3 +344,19 @@ assert_type(ETag().require_if_match, bool)
 mount(api, {"/x": 123})  # type: ignore[dict-item]  # pyright: ignore[reportArgumentType]
 Parent(Article, field=1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
 ErrorMap().map(int, 400)  # type: ignore[type-var]  # pyright: ignore[reportArgumentType]
+
+
+class ArticleSearch:
+    def search(
+        self, queryset: QuerySet[Article], term: str, fields: Sequence[str], /
+    ) -> QuerySet[Article]:
+        return queryset
+
+
+class CountArticles:
+    def __call__(self, query: object, /) -> int:
+        return 0
+
+
+search_backend: SearchBackend[Article] = ArticleSearch()
+query_handler: QueryHandler[object, int] = CountArticles()

@@ -14,6 +14,7 @@ See the [Testing guide](../guide/testing.md).
 | `ninja_contract` | `Callable[..., object]` | `ninja_contract(api)`: a schemathesis schema for `schemathesis.pytest.from_fixture`. |
 | `captured_commits` | `Callable[..., AbstractContextManager[list[Callable[[], object]]]]` | `with captured_commits() as callbacks: ...` runs on-commit work at the end. |
 | `openapi_snapshot` | `Callable[..., None]` | `openapi_snapshot(api, name="openapi")` compares the schema with a stored snapshot. |
+| `strict_queries` | `Generator[None]` | Raise `zeal.NPlusOneError` for any N+1 in this test, regardless of `ZEAL_RAISE`. |
 
 ### Options
 
@@ -116,3 +117,28 @@ A `RequestContext` for tests: `make_context(user, None)`.
 | `user` | `UserT` | — | The acting user. |
 | `tenant` | `TenantT` | — | The tenant, or `None`. |
 | `**metadata` | `str` | — | String metadata. |
+
+### `sample()`
+
+```python
+def sample(schema: type[SchemaT]) -> dict[str, object]: ...
+```
+
+A payload for `schema` built from defaults, examples and field types.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `schema` | `type[SchemaT]` | — | The pydantic schema (usually the request body). |
+
+### `samples()`
+
+```python
+def samples(schema: type[SchemaT], count: int) -> list[dict[str, object]]: ...
+```
+
+`count` payloads for `schema` with distinguishable scalar values.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `schema` | `type[SchemaT]` | — | The pydantic schema (usually the request body). |
+| `count` | `int` | — | How many payloads to build. |

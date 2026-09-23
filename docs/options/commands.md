@@ -35,6 +35,26 @@ Export a NinjaAPI's OpenAPI schema, or generate a typed client from it.
 | `--output` | value | — | file to write (default: print) |
 | `--path-prefix` | value | — | override the API root path (default: from urls) |
 | `--check` | flag | — | fail if --output is missing or outdated (for CI) |
+| `--against` | value | — | compare with a previous OpenAPI document and fail on breaking changes; with --output the new document is written afterwards |
+
+### `manage.py devx_inspect`
+
+Show the resolved policy of mounted controllers: scoping, permissions, transaction, pagination, relations and operations.
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `target` | value | — | A controller path (app.api.PostController) or a mounted route prefix (/v1/posts). Without it, inspect every controller of the configured APIs. |
+| `--json` | flag | — | emit JSON instead of a tree |
+
+### `manage.py devx_doctor`
+
+Findings beyond manage.py check: unindexed query fields, unenforced owner/tenant fields, unhinted N+1 risks, missing pagination or permissions, and soft-deleted models with globally unique fields.
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `target` | value | — | A controller path (app.api.PostController) or a mounted route prefix (/v1/posts). Without it, check every controller of the configured APIs. |
+| `--json` | flag | — | emit JSON instead of a table |
+| `--fail-on` | one of `info`, `warn` | — | exit 1 if a finding at or above this severity is found |
 
 ### `manage.py devx_uploads`
 
@@ -57,13 +77,28 @@ Create a Django app laid out for ninja-devx: a controller, schemas, a service an
 
 Every other option of Django's `startapp` (`--extension`, `--name`, `--exclude`) is accepted.
 
-### `manage.py devx_apikey`
+### `manage.py devx_startproject`
 
-Create or revoke scoped API keys.
+Create a runnable ninja-devx project: settings wired with request id, security header and hardening middleware, a health check, JSON logging, a database from DATABASE_URL, and a Postgres compose file (Django's startproject with a template).
 
 | Argument | Type | Default | Description |
 |---|---|---|---|
-| `action` | one of `create`, `revoke` | — | what to do |
+| `name` | value | — | Name of the application or project. |
+| `directory` | value | — | Optional destination directory, this will be created if needed. |
+| `--template` | value | `the ninja-devx app template` | The path or URL to load the template from. |
+| `--extension, -e` | value | `['py', 'toml', 'md', 'yaml', 'gitignore', 'env.example']` | The file extension(s) to render (default: "py"). Separate multiple extensions with commas, or use -e multiple times. |
+| `--name, -n` | value | `[]` | The file name(s) to render. Separate multiple file names with commas, or use -n multiple times. |
+| `--exclude, -x` | value | — | The directory name(s) to exclude, in addition to .git and __pycache__. Can be used multiple times. |
+| `--no-docker` | flag | — | skip compose.yaml (no local Postgres) |
+| `--app` | value | — | also scaffold a first app with devx_startapp |
+
+### `manage.py devx_apikey`
+
+Create, revoke or rotate scoped API keys.
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `action` | one of `create`, `revoke`, `rotate` | — | what to do |
 | `--user` | value | — | username of the key owner (create) |
 | `--name` | value | — | label of the key (create) |
 | `--scope` | value | `[]` | granted scope, repeatable |
@@ -88,6 +123,17 @@ deliver: send due webhook deliveries (once, or continuously with --loop). genera
 | `--allow-http` | flag | — | also send to http:// URLs (development) |
 | `--allow-private-networks` | flag | — | also send to loopback and private addresses (development) |
 
+### `manage.py devx_jobs`
+
+prune --older-than DAYS: delete terminal jobs older than this. retry <id>: replay a failed or cancelled job synchronously.
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `action` | one of `prune`, `retry` | — | what to do |
+| `id` | value | — | job id (retry) |
+| `--older-than` | value | — | prune threshold |
+| `--retry-count` | value | — | extra attempts on failure (retry) |
+
 ### `python -m ninja_devx.tooling.unasync`
 
 | Argument | Type | Default | Description |
@@ -107,3 +153,6 @@ Default renames: `AbstractAsyncContextManager` → `AbstractContextManager`, `As
 | `ninja_devx.W003` | warning | An output schema field is not a model field or attribute, and the schema does not resolve it. |
 | `ninja_devx.E004` | error | `service_class` needs constructor arguments, but the controller has no container. |
 | `ninja_devx.W005` | warning | An output field that `VisibleTo` can hide is required instead of optional. |
+| `ninja_devx.W006` | warning | A `related` hint or `@requires_related` lookup is not a relation of the model. |
+| `ninja_devx.W007` | warning | `expand_rules[...].limit` targets a relation that is not a plain reverse foreign key, so it is prefetched without a cap. |
+| `ninja_devx.E007` | error | `aggregate_fields` names a field that does not exist on the model. |

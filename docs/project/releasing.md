@@ -1,7 +1,7 @@
 # Release runbook
 
-This repository prepares version 0.0.1 as an alpha release. The files define validation and
-publication workflows; they do not configure GitHub account settings or publish a package
+The package version in `pyproject.toml` is the release version; every release before 1.0 is
+an alpha. The files define validation and publication workflows; they do not configure GitHub account settings or publish a package
 by themselves. The maintainer owns the decision to create a release tag.
 
 ## One-time repository and PyPI setup
@@ -51,7 +51,8 @@ Both builds require registry/package-network access. Base-image updates are revi
 changes; a digest gives reproducibility, not perpetual security support.
 
 The default command runs the full test suite against PostgreSQL, Redis and S3, with branch
-coverage and a 300-second process-group deadline. Results are written in the test container.
+coverage, a 90% coverage floor (`tools/verify_local.py --fail-under 90`) and a 300-second
+process-group deadline. Results are written in the test container.
 Run SQLite separately by clearing the database environment:
 
 ```bash
@@ -89,20 +90,20 @@ covers the interpreter/framework/backend versions actually exercised.
 
 ## Prepare the candidate
 
-- Keep `pyproject.toml`, the changelog heading and intended tag in agreement. For this
-  candidate the package version remains `0.0.1`; do not increment it just to retry a build.
+- Keep `pyproject.toml`, the changelog heading and intended tag in agreement. Do not
+  increment the version just to retry a build.
 - Read release notes as a user: identify public behavior, migrations, optional dependencies
   and limits. Remove internal review chronology from published release notes.
 - Verify install and migration instructions from a clean environment. Check examples,
   migration guides, declared support and generated clients after the final code changes.
 - Run the full gates on the candidate commit. Retain coverage, backend, package and audit
   evidence. Test an upgrade with representative application data before promising it.
-- Run `python tools/check_release.py refs/tags/v0.0.1` locally. It rejects branch refs,
+- Run `python tools/check_release.py refs/tags/v0.0.2` locally. It rejects branch refs,
   mismatched versions, missing/duplicate notes and unresolved note placeholders.
 
 ## Publication sequence
 
-An authorized maintainer creates and pushes the immutable `v0.0.1` tag after reviewing the
+An authorized maintainer creates and pushes the immutable `v0.0.2` tag after reviewing the
 candidate. The release workflow validates the tag, calls the complete CI workflow and
 uses the **same distribution artifact** produced by its package job. It does not rebuild
 between validation and publication.

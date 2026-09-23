@@ -7,7 +7,12 @@ from ninja.testing import TestClient
 
 from ninja_devx import IsOwner, IsStaff
 from ninja_devx.crud import ReadOnlyModelController
-from ninja_devx.serialization.visibility import FieldVisibility, VisibleTo
+from ninja_devx.serialization.visibility import (
+    FieldVisibility,
+    VisibleTo,
+    _checks_objects,
+    _request_of,
+)
 from tests.testapp.models import Note
 
 pytestmark = pytest.mark.django_db
@@ -91,3 +96,10 @@ def test_openapi_keeps_the_field_optional():
 def test_visible_to_needs_a_permission():
     with pytest.raises(TypeError):
         VisibleTo()
+
+
+def test_visible_to_needs_a_request_and_object_checks_recurse_into_operands():
+    assert VisibleTo(IsStaff()).allows(None, object()) is False
+    assert _checks_objects(IsStaff() & IsOwner("owner")) is True
+    assert _request_of(42) is None
+    assert _request_of({}) is None

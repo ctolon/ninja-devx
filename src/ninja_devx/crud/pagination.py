@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import copy
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar, cast
 from urllib import parse
 
+from asgiref.sync import sync_to_async
+from django.db import connections
 from django.db.models import Model, QuerySet
 from django.http import HttpRequest
 from django.utils.translation import gettext as _
@@ -34,10 +36,15 @@ from ninja.pagination import CursorPagination as NinjaCursorPagination
 from ninja.pagination import LimitOffsetPagination as NinjaLimitOffsetPagination
 from pydantic import Field
 
+from ..http.pagination_headers import PAGINATION_ATTR
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
 
 __all__ = ["CursorPagination", "LimitOffsetPagination"]
+
+PageT = TypeVar("PageT")
+_CountOption: TypeAlias = bool | Literal["estimate"] | int
 
 
 class CursorPagination(NinjaCursorPagination):
@@ -56,7 +63,7 @@ class CursorPagination(NinjaCursorPagination):
     ) -> object:
         paginator = self._for(queryset, pagination)
         run: Callable[..., object] = vars(NinjaCursorPagination)["paginate_queryset"]
-        return run(paginator, queryset, pagination, request, **params)
+        return _record(request, run(paginator, queryset, pagination, request, **params))
 
     async def apaginate_queryset(
         self,
@@ -67,7 +74,7 @@ class CursorPagination(NinjaCursorPagination):
     ) -> object:
         paginator = self._for(queryset, pagination)
         run: Callable[..., Awaitable[object]] = vars(NinjaCursorPagination)["apaginate_queryset"]
-        return await run(paginator, queryset, pagination, request, **params)
+        return _record(request, await run(paginator, queryset, pagination, request, **params))
 
     def _for(
         self, queryset: QuerySet[Model], pagination: NinjaCursorPagination.Input
@@ -137,7 +144,7 @@ def _ordering_of(queryset: QuerySet[Model], *, default: str = "-pk") -> tuple[st
 
 
 class LimitOffsetPagination(NinjaLimitOffsetPagination):
-    """``?limit=&offset=`` pages with stable ordering, links and an optional count.
+    """``?limit=&offset=`` pages with stable ordering, links and a configurable count.
 
     ::
 
@@ -149,10 +156,19 @@ class LimitOffsetPagination(NinjaLimitOffsetPagination):
 
     - pages never overlap or skip rows: the primary key is added to the ordering;
     - ``next``/``previous`` links keep the other query parameters;
-    - ``count=False`` skips the ``COUNT(*)`` query (``count`` is then ``null``) and
-      fetches one extra row to know whether there is a next page;
     - ``limit`` above ``max_limit`` is clamped instead of rejected, and ``max_offset`` turns
       deep offsets (slow on large tables) into a 422 suggesting cursor pagination.
+
+    ``count`` picks how the total is produced (the response body's ``count`` is always a
+    plain int or ``null``):
+
+    - ``True`` (default): an exact ``COUNT(*)``.
+    - ``False``: no count query (``count`` is ``null``); one extra row is fetched instead,
+      to know whether there is a next page.
+    - ``"estimate"``: on PostgreSQL, ``pg_class.reltuples`` (instant, approximate) for an
+      unfiltered queryset; an exact count otherwise, and on every other database.
+    - an integer ``N``: exact while there are at most ``N`` rows; beyond that, ``count`` is
+      ``N`` and ``PaginationHeadersMiddleware`` sends ``X-Total-Count: N+`` instead of ``N``.
     """
 
     class Input(Schema):  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -170,13 +186,13 @@ class LimitOffsetPagination(NinjaLimitOffsetPagination):
         *,
         limit: int = 100,
         max_limit: int = 1000,
-        count: bool = True,
+        count: _CountOption = True,
         max_offset: int | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(max_limit=max_limit, **kwargs)
         self.default_limit = limit
-        self.count = count
+        self.count: _CountOption = count
         self.max_offset = max_offset
 
     def paginate_queryset(
@@ -189,8 +205,8 @@ class LimitOffsetPagination(NinjaLimitOffsetPagination):
         limit, offset = self._window(pagination)
         ordered = self._ordered(queryset)
         rows = list(ordered[offset : offset + limit + 1])
-        total = ordered.count() if self.count else None
-        return self._page(request, rows, limit, offset, total)
+        total, lower_bound = _total(self.count, queryset)
+        return self._page(request, rows, limit, offset, total, lower_bound)
 
     async def apaginate_queryset(
         self,
@@ -202,8 +218,8 @@ class LimitOffsetPagination(NinjaLimitOffsetPagination):
         limit, offset = self._window(pagination)
         ordered = self._ordered(queryset)
         rows = [row async for row in ordered[offset : offset + limit + 1]]
-        total = await ordered.acount() if self.count else None
-        return self._page(request, rows, limit, offset, total)
+        total, lower_bound = await _atotal(self.count, queryset)
+        return self._page(request, rows, limit, offset, total, lower_bound)
 
     def _window(self, pagination: NinjaLimitOffsetPagination.Input) -> tuple[int, int]:
         requested: object = getattr(pagination, "limit", None)
@@ -231,18 +247,89 @@ class LimitOffsetPagination(NinjaLimitOffsetPagination):
 
     @staticmethod
     def _page(
-        request: HttpRequest, rows: list[Model], limit: int, offset: int, total: int | None
+        request: HttpRequest,
+        rows: list[Model],
+        limit: int,
+        offset: int,
+        total: int | None,
+        lower_bound: bool = False,
     ) -> dict[str, object]:
         has_next = len(rows) > limit
         url = request.build_absolute_uri()
-        return {
+        next_url = _with_query(url, limit=limit, offset=offset + limit) if has_next else None
+        previous_url = (
+            _with_query(url, limit=limit, offset=max(offset - limit, 0)) if offset else None
+        )
+        page: dict[str, object] = {
             "items": rows[:limit],
             "count": total,
-            "next": _with_query(url, limit=limit, offset=offset + limit) if has_next else None,
-            "previous": (
-                _with_query(url, limit=limit, offset=max(offset - limit, 0)) if offset else None
-            ),
+            "next": next_url,
+            "previous": previous_url,
         }
+        return _record(request, page, count_lower_bound=lower_bound)
+
+
+def _unfiltered(queryset: QuerySet[Model]) -> bool:
+    query = queryset.query
+    return not query.where.children and query.combinator is None
+
+
+def _reltuples_estimate(queryset: QuerySet[Model]) -> int | None:
+    connection = connections[queryset.db]
+    if connection.vendor != "postgresql":
+        return None
+    table = connection.ops.quote_name(queryset.model._meta.db_table)
+    with connection.cursor() as cursor:
+        # to_regclass resolves the quoted, schema-qualified name and returns NULL for a
+        # missing table, instead of matching a same-named table in another schema.
+        cursor.execute("SELECT reltuples FROM pg_class WHERE oid = to_regclass(%s)", [table])
+        row = cast("tuple[float | None] | None", cursor.fetchone())
+    if row is None or row[0] is None or row[0] < 0:
+        return None
+    return int(row[0])
+
+
+def _total(count: _CountOption, queryset: QuerySet[Model]) -> tuple[int | None, bool]:
+    """``(count, lower_bound)`` for the ``count`` pagination option."""
+    if count is False:
+        return None, False
+    if count is True:
+        return queryset.count(), False
+    if count == "estimate":
+        if _unfiltered(queryset) and (estimate := _reltuples_estimate(queryset)) is not None:
+            return estimate, False
+        return queryset.count(), False
+    found = queryset.order_by()[: count + 1].count()
+    lower_bound = found > count
+    return (count, True) if lower_bound else (found, False)
+
+
+async def _atotal(count: _CountOption, queryset: QuerySet[Model]) -> tuple[int | None, bool]:
+    if count is False:
+        return None, False
+    if count is True:
+        return await queryset.acount(), False
+    if count == "estimate":
+        if _unfiltered(queryset):
+            estimate = await sync_to_async(_reltuples_estimate)(queryset)
+            if estimate is not None:
+                return estimate, False
+        return await queryset.acount(), False
+    found = await queryset.order_by()[: count + 1].acount()
+    lower_bound = found > count
+    return (count, True) if lower_bound else (found, False)
+
+
+def _record(request: HttpRequest, page: PageT, *, count_lower_bound: bool = False) -> PageT:
+    """Keep ``count``/``next``/``previous`` on the request for the pagination headers."""
+    result: object = page
+    if isinstance(result, dict):
+        values = cast("dict[str, object]", result)
+        request.__dict__[PAGINATION_ATTR] = {
+            **{key: values.get(key) for key in ("count", "next", "previous")},
+            "count_lower_bound": count_lower_bound,
+        }
+    return page
 
 
 def _with_query(url: str, **values: int) -> str:

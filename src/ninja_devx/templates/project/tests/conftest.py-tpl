@@ -1,0 +1,16 @@
+"""Shared fixtures. ``ninja_client`` (a test client for one controller) comes from
+``ninja_devx.pytest_plugin``, loaded automatically once ninja-devx is installed::
+
+    def test_health(ninja_client) -> None:
+        assert ninja_client(HealthController).get("/live").status_code == 200
+"""
+
+from __future__ import annotations
+
+import pytest
+from django.contrib.auth.models import User
+
+
+@pytest.fixture
+def user() -> User:
+    return User.objects.create(username="demo")

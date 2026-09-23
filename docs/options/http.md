@@ -33,12 +33,31 @@ An operation decorator adding `ETag` and 304 handling to successful GET response
 
 | Class | Arguments | Description |
 |---|---|---|
-| `RateThrottle` | `rate: str \| None = None, *, cache: str = 'default'` | Base class: `rate` requests per window for each identity from `identify()`. |
+| `RateThrottle` | `rate: str \| None = None, *, cache: str = 'default', storage: ThrottleStorage \| None = None` | Base class: `rate` requests per window for each identity from `identify()`. |
 | `UserRateThrottle` | — | Per authenticated user (`request.auth` or `request.user`); anonymous requests pass. |
 | `AnonRateThrottle` | — | Per client IP for anonymous requests; authenticated requests pass. |
-| `ClientRateThrottle` | `*, user: str \| None = None, anon: str \| None = None, cache: str = 'default'` | One throttle, two rates: `ClientRateThrottle(user="600/min", anon="30/min")`. |
-| `ScopedRateThrottle` | `scope: str, *, cache: str = 'default'` | A named limit whose rate comes from `NINJA_DEVX["THROTTLE_RATES"][scope]`. |
-| `TenantRateThrottle` | `rate: str, *, tenant: Callable[[HttpRequest], object] \| None = None, cache: str = 'default'` | Per tenant: the tenant already resolved, `request.tenant`, or `tenant(request)`. |
+| `ClientRateThrottle` | `*, user: str \| None = None, anon: str \| None = None, cache: str = 'default', storage: ThrottleStorage \| None = None` | One throttle, two rates: `ClientRateThrottle(user="600/min", anon="30/min")`. |
+| `ScopedRateThrottle` | `scope: str, *, cache: str = 'default', storage: ThrottleStorage \| None = None` | A named limit whose rate comes from `NINJA_DEVX["THROTTLE_RATES"][scope]`. |
+| `TenantRateThrottle` | `rate: str, *, tenant: Callable[[HttpRequest], object] \| None = None, cache: str = 'default', storage: ThrottleStorage \| None = None` | Per tenant: the tenant already resolved, `request.tenant`, or `tenant(request)`. |
+
+### `parse_rate()`
+
+```python
+def parse_rate(rate: str) -> tuple[int, int]: ...
+```
+
+`"100/min"` → `(100, 60)`; `"20/5min"` → `(20, 300)`.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `rate` | `str` | — | Requests per period, e.g. `"100/min"` or `"20/5min"`. |
+
+### Throttle storage (`RateThrottle(storage=...)`, `NINJA_DEVX['THROTTLE_STORAGE']`)
+
+| Class | Arguments | Description |
+|---|---|---|
+| `ThrottleStorage` | — | Where throttles count hits. `key` already identifies the current fixed window. |
+| `CacheThrottleStorage` | `cache_alias: str = 'default'` | Default storage: a Django cache, via `cache.add` + `cache.incr`. |
 
 ### `idempotent()`
 

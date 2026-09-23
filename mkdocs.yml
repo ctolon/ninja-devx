@@ -99,29 +99,39 @@ nav:
           - Mounting and versioning: guide/mounting.md
       - Data and CRUD:
           - CRUD: guide/crud.md
+          - Nested writes: guide/nested-writes.md
+          - Transitions: guide/transitions.md
+          - Query tuning: guide/query-tuning.md
+          - API surface: guide/api-surface.md
           - Multi-tenancy: guide/tenancy.md
           - HTTP caching and locking: guide/conditional.md
-          - Field visibility and shaping: guide/visibility.md
+          - Field visibility: guide/visibility.md
       - Architecture:
           - Dependency injection: guide/dependency-injection.md
-          - Services and layers: guide/layers.md
+          - Services, repositories and other layers: guide/layers.md
+          - CQRS and DDD: guide/cqrs.md
           - Architecture recipes: guide/recipes.md
       - Runtime:
           - Async and sync: guide/async.md
-          - Hooks, transactions, idempotency: guide/hooks.md
+          - Hooks, logging, tracing and transactions: guide/hooks.md
           - Throttling: guide/throttling.md
-          - Middleware, health, rendering: guide/middleware.md
+          - Middleware and operations: guide/middleware.md
+          - Operations: guide/operations.md
           - Settings: guide/settings.md
           - Translations: guide/i18n.md
       - Batteries (contrib):
           - API keys: guide/api-keys.md
           - Audit log: guide/audit.md
           - Webhooks: guide/webhooks.md
+          - Jobs: guide/jobs.md
           - Direct uploads: guide/uploads.md
       - Quality and tooling:
           - Testing: guide/testing.md
           - Code generation: guide/codegen.md
-          - System checks: guide/checks.md
+          - Starting a project: guide/startproject.md
+          - System checks and schema drift: guide/checks.md
+          - Inspecting controllers: guide/inspect.md
+          - N+1 detection and devx_doctor: guide/doctor.md
           - Typing: guide/typing.md
   - Reference:
       - options/index.md
@@ -147,7 +157,8 @@ nav:
       - Release runbook: project/releasing.md
       - Contributing: project/contributing.md
       - Changelog: project/changelog.md
-      - Review integration: migration/review-integration.md
-      - Migrating from Django REST framework: migration/drf.md
-      - Migrating from Django Ninja: migration/ninja.md
-      - Migrating from django-ninja-extra: migration/ninja-extra.md
+  - Migrations:
+      - Version changes: migration/review-integration.md
+      - From Django REST framework: migration/drf.md
+      - From Django Ninja: migration/ninja.md
+      - From Django Ninja Extra: migration/ninja-extra.md

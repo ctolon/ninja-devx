@@ -146,6 +146,51 @@ An operation method: map the payload with `command` and call the resolved handle
 | `command` | `Callable[[PayloadT], CommandT]` | — | Maps the validated payload to the command; its parameter type is the request body. |
 | `status` | `int \| None` | `None` | Status code of the response (default: the operation's first response). |
 
+### `use_query()`
+
+```python
+def use_query(decorator: Callable[[Method], Method], handler: Callable[..., QueryHandler[CommandT, ResultT] | QueryHandler[CommandT, Awaitable[ResultT]]], *, query: Callable[[PayloadT], CommandT], status: int | None = None) -> Method: ...
+```
+
+A read operation: map the query parameters and call the resolved handler.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `decorator` | `Callable[[Method], Method]` | — | The operation decorator, e.g. `get("/stats", response=StatsOut)`. |
+| `handler` | `Callable[..., QueryHandler[CommandT, ResultT] \| QueryHandler[CommandT, Awaitable[ResultT]]]` | — | A class with `__call__(query)` (sync or async), resolved from the container. |
+| `query` | `Callable[[PayloadT], CommandT]` | — | Maps the validated payload to the query; its parameter type is the query schema. |
+| `status` | `int \| None` | `None` | Status code of the response (default: the operation's first response). |
+
+### CQRS building blocks
+
+| Class | Arguments | Description |
+|---|---|---|
+| `Message` | — | Base for an application message. |
+| `Command` | — | A request that changes state, handled by a `use_case` handler. |
+| `Query` | — | A request that reads state, handled by a `use_query` handler. |
+| `DomainEvent` | — | Base for a domain event; use a frozen dataclass subclass. |
+| `EventBus` | `tasks: TaskQueue` | A registry that delivers domain events after the current transaction commits. |
+| `UnitOfWork` | `*, using: str \| None = None, durable: bool = False` | Wrap a block in one `transaction.atomic`. |
+
+### Application plugins
+
+| Class | Arguments | Description |
+|---|---|---|
+| `APIPlugin` | — | Base class for an application plugin. Override the parts you need. |
+
+### `install()`
+
+```python
+def install(api: NinjaAPI, plugins: Sequence[APIPlugin]) -> None: ...
+```
+
+Install `plugins` on `api`: error rules, middleware, then `setup`.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `api` | `NinjaAPI` | — | The `NinjaAPI` to configure. |
+| `plugins` | `Sequence[APIPlugin]` | — | Plugins applied in order. |
+
 ### `mount()`
 
 ```python

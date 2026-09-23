@@ -4,7 +4,12 @@ from ninja import Schema
 from ninja.pagination import PageNumberPagination
 from ninja.testing import TestAsyncClient
 
-from ninja_devx.crud import AsyncCRUDController, AsyncReadOnlyModelController, CRUDController
+from ninja_devx.crud import (
+    AsyncCRUDController,
+    AsyncReadOnlyModelController,
+    CRUDController,
+    SoftDeleteMixin,
+)
 from tests.testapp.models import Article, Note
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -113,3 +118,18 @@ async def test_async_writes_hop_to_a_thread_once():
     with assert_max_hops(1):  # lookup, object permissions, write and reload together
         patched = await client.patch(f"/{note.pk}", json={"text": "patched"}, user=ada)
     assert patched.status_code == 200
+
+
+class AsyncSoftNotes(SoftDeleteMixin[Note, NoteOut], AsyncCRUDController[Note, NoteOut, NoteIn]):
+    pass
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_async_soft_delete_and_restore():
+    user = await User.objects.acreate(username="async-owner")
+    note = await Note.objects.acreate(owner=user, text="x")
+    client = TestAsyncClient(AsyncSoftNotes.as_router())
+    assert (await client.delete(f"/{note.pk}")).status_code == 204
+    assert (await client.post(f"/{note.pk}/restore")).status_code == 200
+    await note.arefresh_from_db()
+    assert note.deleted_at is None

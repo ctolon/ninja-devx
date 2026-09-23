@@ -55,6 +55,20 @@ Django's connection pool when `?pool=1` is set. The load generator is a single P
 process, so it saturates at about a thousand requests per second. Use `oha` or `wrk`
 against the same `benchmarks.wsgi` / `benchmarks.asgi` apps for higher rates.
 
+## Cross-framework overhead
+
+`benchmarks/frameworks/overhead.py` serves the same `GET /items` payload through Django
+Ninja, ninja-devx and (when installed) Django REST framework and django-ninja-extra, and
+reports per-request overhead. It characterizes the abstraction each framework adds; it is
+not a ranking and is not a CI gate.
+
+```bash
+python benchmarks/frameworks/overhead.py
+uv run --isolated --with djangorestframework python benchmarks/frameworks/overhead.py
+```
+
+See `benchmarks/frameworks/README.md`.
+
 ## Database queries
 
 The CRUD endpoints derive `select_related`, `Prefetch` querysets and optionally `only()`

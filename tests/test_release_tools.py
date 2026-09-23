@@ -1,7 +1,11 @@
 """Publication guards reject wrong refs and incomplete release notes."""
 
+import re
+from pathlib import Path
+
 import pytest
 
+import ninja_devx
 from tools.check_release import release_notes
 
 
@@ -27,3 +31,14 @@ def test_release_rejects_missing_or_ambiguous_notes(release_tree, body):
     (release_tree / "CHANGELOG.md").write_text(f"# Changelog\n\n## 0.0.1\n\n{body}\n")
     with pytest.raises(ValueError, match=r"Changelog|Release notes"):
         release_notes(release_tree, "refs/tags/v0.0.1")
+
+
+def test_source_tree_version_fallback_matches_pyproject():
+    root = Path(ninja_devx.__file__).resolve().parents[2]
+    pyproject = (root / "pyproject.toml").read_text()
+    declared = re.search(r'^version = "([^"]+)"', pyproject, re.M)
+    source = (root / "src/ninja_devx/__init__.py").read_text()
+    fallback = re.search(r'^    __version__ = "([^"]+)"', source, re.M)
+    assert declared is not None
+    assert fallback is not None
+    assert fallback.group(1) == declared.group(1)

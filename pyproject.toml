@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ninja-devx"
-version = "0.0.1"
+version = "0.0.2"
 description = "Developer productivity toolkit for Django Ninja: typed controllers, CRUD, permissions, layers, DI and tooling"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -66,6 +66,15 @@ s3 = [
 crypto = [
     "cryptography>=42",
 ]
+redis = [
+    "redis>=5",
+]
+structlog = [
+    "structlog>=24",
+]
+zeal = [
+    "django-zeal>=2",
+]
 
 [project.entry-points.pytest11]
 ninja_devx = "ninja_devx.pytest_plugin"
@@ -102,6 +111,9 @@ dev = [
     "orjson>=3.12.0",
     "msgspec>=0.21.1",
     "cryptography>=42",
+    "redis>=5",
+    "structlog>=24",
+    "django-zeal>=2",
 ]
 
 docs = [
@@ -125,11 +137,28 @@ asyncio_default_fixture_loop_scope = "function"
 filterwarnings = ["error"]
 pythonpath = ["."]
 
+[tool.coverage.run]
+source = ["ninja_devx"]
+branch = true
+omit = ["*/ninja_devx/unasync.py", "*/migrations/*"]
+
+[tool.coverage.report]
+skip_covered = true
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    '^\s*\.\.\.$',
+    ': \.\.\.$',
+    "raise NotImplementedError",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 # Generated API clients are checked with `devx_openapi --check`, not reformatted.
-extend-exclude = ["examples/blog/clients"]
+# The scaffold's pyproject.toml is a Jinja template, not valid TOML, so ruff's own
+# config discovery must not try to parse it.
+extend-exclude = ["examples/blog/clients", "src/ninja_devx/templates/project/pyproject.toml"]
 
 [tool.ruff.format]
 # Markdown snippet directives are not Python expressions; MkDocs expands them.

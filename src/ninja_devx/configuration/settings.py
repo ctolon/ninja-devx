@@ -74,6 +74,9 @@ class NinjaDevXSettings(TypedDict, total=False):
     """A ``RequestContext[User, Tenant]`` key (or its import path) whose ``tenant`` is used."""
     THROTTLE_RATES: Mapping[str, str | None]
     """Rates for ``ScopedRateThrottle`` scopes, e.g. ``{"uploads": "10/min"}``."""
+    THROTTLE_STORAGE: object
+    """A ``ThrottleStorage`` (or its import path) used by throttles without their own
+    ``storage=``; default: cache-based fixed windows."""
     OBJECT_PERMISSION_BACKEND: object
     """An ``ObjectPermissionBackend`` (or its import path); default: grants, guardian, Django."""
     CHECK_APIS: Sequence[str]
@@ -106,6 +109,7 @@ class ResolvedSettings:
     tenant_resolver: Callable[[HttpRequest], object] | None = None
     tenant_context: object | None = None
     throttle_rates: Mapping[str, str | None] = field(default_factory=dict[str, "str | None"])
+    throttle_storage: object | None = None
     object_permission_backend: object | None = None
     webhook_secret_keys: tuple[str, ...] = ()
 
@@ -165,6 +169,7 @@ def _resolve_settings() -> ResolvedSettings:
         tenant_resolver=_callable(values.get("TENANT_RESOLVER"), "TENANT_RESOLVER"),
         tenant_context=_import(values.get("TENANT_CONTEXT")),
         throttle_rates=dict(values.get("THROTTLE_RATES", {})),
+        throttle_storage=values.get("THROTTLE_STORAGE"),
         object_permission_backend=values.get("OBJECT_PERMISSION_BACKEND"),
         webhook_secret_keys=tuple(values.get("WEBHOOK_SECRET_KEYS", ())),
     )

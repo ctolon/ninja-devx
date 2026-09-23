@@ -15,6 +15,15 @@ __all__ = ["generate_typescript"]
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
 
+_COOKIE_RUNTIME = """\
+function cookieHeader(values: Record<string, unknown>): string | undefined {
+  const parts = Object.entries(values)
+    .filter(([, value]) => value != null)
+    .map(([key, value]) => `${key}=${String(value)}`);
+  return parts.length ? parts.join("; ") : undefined;
+}
+"""
+
 _RUNTIME = """\
 export class ApiError extends Error {
   constructor(
@@ -82,10 +91,17 @@ def generate_typescript(document: Schema) -> str:
         "createClient",
         "buildUrl",
         "multipart",
+        "cookieHeader",
         *_keywords(),
     }
     _source.schemas(document, reserved=reserved, javascript=True)
     operations = read_operations(document)
+    for operation in operations:
+        if operation.streaming:
+            raise ValueError(
+                f"{operation.operation_id}: streaming responses are unsupported in the "
+                "TypeScript client; use the Python client for text/event-stream"
+            )
     _source.unique(
         (_camel(op.operation_id) for op in operations),
         namespace="client methods",
@@ -111,6 +127,8 @@ def generate_typescript(document: Schema) -> str:
         lines.append(_declaration(name, _mapping(schema)))
         lines.append("")
     lines.append(_RUNTIME)
+    if any(p.location == "cookie" for op in operations for p in op.parameters):
+        lines.append(_COOKIE_RUNTIME)
     lines.append(_client(operations))
     return "\n".join(lines).rstrip() + "\n"
 
@@ -236,6 +254,7 @@ def _method(operation: Operation) -> str:
     path_params = [p for p in operation.parameters if p.location == "path"]
     query_params = [p for p in operation.parameters if p.location == "query"]
     header_params = [p for p in operation.parameters if p.location == "header"]
+    cookie_params = [p for p in operation.parameters if p.location == "cookie"]
     arguments = [f"{_identifier(p.name)}: {ts_type(p.schema)}" for p in path_params]
     if operation.body is not None:
         optional = "" if operation.body_required else " | undefined = undefined"
@@ -252,6 +271,12 @@ def _method(operation: Operation) -> str:
         )
         default = "" if any(p.required for p in header_params) else " = {}"
         arguments.append(f"headers: {{ {fields} }}{default}")
+    if cookie_params:
+        fields = "; ".join(
+            f"{_key(p.name)}{'' if p.required else '?'}: {ts_type(p.schema)}" for p in cookie_params
+        )
+        default = "" if any(p.required for p in cookie_params) else " = {}"
+        arguments.append(f"cookies: {{ {fields} }}{default}")
     arguments.append("requestOptions: RequestOptions = {}")
     if operation.response is not None:
         result = ts_type(operation.response)
@@ -264,7 +289,12 @@ def _method(operation: Operation) -> str:
     body = "body" if operation.body is not None else "undefined"
     if operation.body_media_type == "multipart/form-data":
         body = f"multipart({body})"
-    headers = "headers" if header_params else "undefined"
+    entries: list[str] = []
+    if header_params:
+        entries.append("...headers")
+    if cookie_params:
+        entries.append("Cookie: cookieHeader(cookies)")
+    headers = "{ " + ", ".join(entries) + " }" if entries else "undefined"
     summary = f"    // {_source.literal(operation.summary)}\n" if operation.summary else ""
     return (
         f"{summary}    {_camel(operation.operation_id)}: ({', '.join(arguments)}) =>\n"

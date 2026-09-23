@@ -26,9 +26,9 @@ class EmployeeOut(FieldVisibility, Schema):
 
 | | plain `Schema` | `FieldVisibility, Schema` |
 |---|---|---|
-| request-level rules (`IsStaff`, `HasDjangoPermission`) | ✅ | ✅ |
-| object-level rules (`IsOwner`, `as_permission(policy, User)`) | hidden (fails closed) | ✅ |
-| `hidden="omit"` | serialized as `null` | ✅ omitted |
+| request-level rules (`IsStaff`, `HasDjangoPermission`) | yes | yes |
+| object-level rules (`IsOwner`, `as_permission(policy, User)`) | hidden (fails closed) | yes |
+| `hidden="omit"` | serialized as `null` | omitted |
 
 Checks run while Ninja serializes the response, using the request Ninja passes to
 pydantic. They work the same for lists and nested schemas. Serialization is synchronous;
@@ -76,3 +76,24 @@ In OpenAPI, `author` is `integer | AuthorOut`, so generated clients handle both 
 With `sparse_fields`, `list` and `retrieve` respond with `<Out>Partial`: the same
 properties, none required. Validating clients (such as `devx_openapi --format python`)
 therefore accept `?fields=` responses. Writes keep returning the full schema.
+
+## Write-side visibility
+
+The same idea for input: `WriteVisibleTo` marks an input field only some callers may set.
+A create or update that submits the field without permission is rejected with 403 before
+anything is persisted.
+
+```python
+from typing import Annotated
+from ninja_devx import IsStaff, WriteVisibleTo
+
+class ArticleIn(Schema):
+    title: str
+    featured: Annotated[bool, WriteVisibleTo(IsStaff())] = False
+```
+
+- Use request-level permissions (`IsStaff`, `HasDjangoPermission`, a request policy).
+  Object-level rules fail closed, because the object is not known when the payload arrives.
+- The check runs in `create`, `update` and `partial_update`; `PATCH` only rejects the fields
+  actually sent. Use it to protect roles, moderation flags or billing fields from clients.
+- `WriteVisibleTo` lives next to `VisibleTo` and takes the same `&`, `|`, `~` combinations.

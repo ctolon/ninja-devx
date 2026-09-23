@@ -135,6 +135,31 @@ Inside a transaction the work runs on commit, and outside one it runs immediatel
 `ImmediateTaskQueue` runs everything now. `RecordingTaskQueue` records calls for tests
 (`.calls`, `.run_all()`).
 
+### Celery, Dramatiq, RQ, Taskiq, Temporal and FastStream
+
+`ninja_devx.contrib.tasks` adapts the same `TaskQueue` port to a task framework, so services
+do not change. Celery (`.delay`/`.apply_async`), Dramatiq (`.send`) and Taskiq (`.kiq`) are
+detected from the callable; RQ, Temporal and FastStream take a queue/client/broker:
+
+```python
+from ninja_devx.contrib.tasks import (
+    CeleryTaskQueue,
+    DeferredTaskQueue,
+    FastStreamTaskQueue,
+    RQTaskQueue,
+    TemporalTaskQueue,
+)
+from ninja_devx.layers import TaskQueue
+
+container.singleton(TaskQueue, CeleryTaskQueue())
+# or: RQTaskQueue(redis_queue), TemporalTaskQueue(temporal_client),
+#     FastStreamTaskQueue(broker, queue="tasks")
+```
+
+The adapter is a drop-in for `OnCommitTaskQueue` for every `TaskQueue` consumer; the
+`enqueue`/`call` methods are the only contract. `DeferredTaskQueue(defer_fn)` adapts any
+``defer(function, args, kwargs)`` callable when there is no framework-specific adapter.
+
 ## Policies
 
 ```python

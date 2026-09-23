@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from ninja_devx.models import SoftDeletable, Stamped
+
 
 class Tag(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -65,6 +67,13 @@ class Task(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tasks")
     title = models.CharField(max_length=50)
     slug = models.SlugField(unique=True, null=True, blank=True)
+
+    class Meta:
+        ordering = ("id",)
+
+
+class Document(Stamped, SoftDeletable):
+    title = models.CharField(max_length=100)
 
     class Meta:
         ordering = ("id",)

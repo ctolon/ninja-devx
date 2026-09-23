@@ -1,0 +1,12 @@
+from collections.abc import Callable
+
+import pytest
+from ninja.testing import TestClient
+
+from ninja_devx.http.health import HealthController
+
+pytestmark = pytest.mark.django_db
+
+
+def test_health_is_live(ninja_client: Callable[..., TestClient]) -> None:
+    assert ninja_client(HealthController).get("/live").status_code == 200

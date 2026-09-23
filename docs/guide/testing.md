@@ -101,7 +101,7 @@ Run branch coverage without changing CI configuration:
 ```bash
 uv run --with coverage python tools/verify_local.py --output /tmp/devx-validation --timeout 180
 # An explicit project-owned threshold is optional:
-uv run --with coverage python tools/verify_local.py --output /tmp/devx-validation --fail-under 80
+uv run --with coverage python tools/verify_local.py --output /tmp/devx-validation --fail-under 90
 ```
 
 The tool writes JSON and browsable HTML coverage reports outside the source tree. It
@@ -115,7 +115,7 @@ Build and smoke-test every optional dependency in isolated environments:
 
 ```bash
 uv build --out-dir /tmp/devx-dist
-python tools/verify_package.py /tmp/devx-dist/ninja_devx-0.0.1-py3-none-any.whl \
+python tools/verify_package.py /tmp/devx-dist/ninja_devx-0.0.2-py3-none-any.whl \
   --report /tmp/devx-dist/extras.json
 ```
 
@@ -146,3 +146,19 @@ The test suite checks transport details alongside operation results:
 
 These contracts cover the built-in configurations under test. Custom response schemas,
 renderers, authentication backends and operation overrides need application-level tests.
+
+## Test data
+
+`ninja_devx.testing` builds valid request payloads from a schema: declared defaults and
+examples win, otherwise values are derived from the field types. This keeps request bodies
+out of tests.
+
+```python
+from ninja_devx.testing import sample, samples
+
+payload = sample(ArticleIn)          # {"title": "title", "published": False, ...}
+rows = samples(ArticleIn, 3)         # three distinct payloads
+```
+
+For model instances, use `factory_boy` or fixtures; `InMemoryRepository` and
+`make_context` cover the [layers](layers.md) without a database.

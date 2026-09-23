@@ -776,6 +776,15 @@ wheels = [
 ]
 
 [[package]]
+name = "django-zeal"
+version = "2.2.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/b5/d10702bcdb31f0746c014071277b4a59698effe608a2140f4d39a40de976/django_zeal-2.2.4.tar.gz", hash = "sha256:e5caedfc0092e877baa318af2146f3ba9c07104d122af4f900fcf9cc49f46e74", size = 21946, upload-time = "2026-08-28T16:48:41.682Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/29/e4f2879c807693fdc04b8fd0fbfd1d5270f234ea73aaa00a3a53cb5c76f4/django_zeal-2.2.4-py3-none-any.whl", hash = "sha256:f5d424833450e47fcb000fe5cee7cc78be4952c36afbc47ed772375b90a727d8", size = 15758, upload-time = "2026-08-28T16:48:40.535Z" },
+]
+
+[[package]]
 name = "docutils"
 version = "0.23"
 source = { registry = "https://pypi.org/simple" }
@@ -1803,7 +1812,7 @@ wheels = [
 
 [[package]]
 name = "ninja-devx"
-version = "0.0.1"
+version = "0.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "django", version = "5.2.17", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1836,11 +1845,20 @@ orjson = [
 otel = [
     { name = "opentelemetry-api" },
 ]
+redis = [
+    { name = "redis" },
+]
 s3 = [
     { name = "boto3" },
 ]
+structlog = [
+    { name = "structlog" },
+]
 svcs = [
     { name = "svcs" },
+]
+zeal = [
+    { name = "django-zeal" },
 ]
 
 [package.dev-dependencies]
@@ -1854,6 +1872,7 @@ dev = [
     { name = "dishka" },
     { name = "django-guardian" },
     { name = "django-stubs" },
+    { name = "django-zeal" },
     { name = "httpx" },
     { name = "msgspec" },
     { name = "mypy" },
@@ -1864,8 +1883,10 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-django" },
+    { name = "redis" },
     { name = "ruff" },
     { name = "schemathesis" },
+    { name = "structlog" },
     { name = "svcs" },
 ]
 docs = [
@@ -1890,14 +1911,17 @@ requires-dist = [
     { name = "django", specifier = ">=4.2" },
     { name = "django-guardian", marker = "extra == 'guardian'", specifier = ">=2.4" },
     { name = "django-ninja", specifier = ">=1.7,<2" },
+    { name = "django-zeal", marker = "extra == 'zeal'", specifier = ">=2" },
     { name = "httpx", marker = "extra == 'client'", specifier = ">=0.27" },
     { name = "msgspec", marker = "extra == 'msgspec'", specifier = ">=0.18" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.20" },
     { name = "orjson", marker = "extra == 'orjson'", specifier = ">=3.9" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=5" },
     { name = "schemathesis", marker = "extra == 'contract'", specifier = ">=4" },
+    { name = "structlog", marker = "extra == 'structlog'", specifier = ">=24" },
     { name = "svcs", marker = "extra == 'svcs'", specifier = ">=24.1" },
 ]
-provides-extras = ["dishka", "svcs", "otel", "client", "contract", "guardian", "orjson", "msgspec", "s3", "crypto"]
+provides-extras = ["dishka", "svcs", "otel", "client", "contract", "guardian", "orjson", "msgspec", "s3", "crypto", "redis", "structlog", "zeal"]
 
 [package.metadata.requires-dev]
 bench = [
@@ -1910,6 +1934,7 @@ dev = [
     { name = "dishka", specifier = ">=1.4" },
     { name = "django-guardian", specifier = ">=2.4" },
     { name = "django-stubs", specifier = ">=5.1" },
+    { name = "django-zeal", specifier = ">=2" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "msgspec", specifier = ">=0.21.1" },
     { name = "mypy", specifier = ">=1.13" },
@@ -1920,8 +1945,10 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-django", specifier = ">=4.9" },
+    { name = "redis", specifier = ">=5" },
     { name = "ruff", specifier = ">=0.8" },
     { name = "schemathesis", specifier = ">=4" },
+    { name = "structlog", specifier = ">=24" },
     { name = "svcs", specifier = ">=24.1" },
 ]
 docs = [
@@ -2730,6 +2757,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5f/d3/3f06a1006f2261d1342aefb3c71eed02f5d4ca5bdbecd86ebc12ad38306e/sqlparse-0.6.0.tar.gz", hash = "sha256:113c35c75365ab9cc9c7231d68c6428fb11c085fc8e9eb1ad659b7ddbf6cd2b9", size = 178477, upload-time = "2026-08-13T19:16:06.396Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d9/50/f00935da0ec7cbf325f8dc4f772ae46fbc7b672dd62876e73f0a94adda57/sqlparse-0.6.0-py3-none-any.whl", hash = "sha256:b861c0288ce2fa56209a9a6412d2e066ac664b3873b89c26c9d8415e8e32996f", size = 50070, upload-time = "2026-08-13T19:16:04.062Z" },
+]
+
+[[package]]
+name = "structlog"
+version = "26.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/89/b4a0bcfdf4f71a3dea31379f095929613d7e4528a0996bca6aa964cd0dca/structlog-26.1.0.tar.gz", hash = "sha256:f63a716cbd1b1291cf7661de7794b455acfa4c43c5bcf1630e6ad5ddc1adb3b7", size = 1459881, upload-time = "2026-06-06T07:33:39.348Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/18/489c97b834dfff9cf2fc2507cede4bcd4b11e67f84bc462acd1992496f86/structlog-26.1.0-py3-none-any.whl", hash = "sha256:e081a26d6c373e6d201eca24eede26d8ffab07f88f477822e679183428d3d91e", size = 73764, upload-time = "2026-06-06T07:33:38.046Z" },
 ]
 
 [[package]]

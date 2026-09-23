@@ -4,7 +4,12 @@ from django.test.utils import CaptureQueriesContext
 from ninja import Schema
 from ninja.testing import TestClient
 
-from ninja_devx.crud import ReadOnlyModelController, optimize_queryset, related_lookups
+from ninja_devx.crud import (
+    ReadOnlyModelController,
+    optimize_queryset,
+    related_lookups,
+    requires_related,
+)
 from tests.testapp.models import Article, Comment
 
 
@@ -97,3 +102,38 @@ def test_only_is_skipped_when_the_schema_reads_computed_values(db):
         lengths = [len(article.body) for article in queryset]
     assert lengths == [500, 500]
     assert len(queries.captured_queries) == 1
+
+
+class ArticleAuthorName(Schema):
+    id: int
+    author_name: str
+
+    @staticmethod
+    @requires_related("author")
+    def resolve_author_name(obj: Article) -> str:
+        return obj.author.username
+
+
+def test_requires_related_loads_resolver_relations(db):
+    select, _ = related_lookups(Article, ArticleAuthorName)
+    assert "author" in select
+
+
+def test_controller_related_hint_avoids_n_plus_one(db):
+    make_articles(5)
+
+    class Articles(ReadOnlyModelController[Article, ArticleAuthorName]):
+        related = ("author",)
+
+    client = TestClient(Articles.as_router())
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get("/")
+    assert len(queries.captured_queries) == 1
+    assert response.json()[0]["author_name"] == "ada"
+
+
+def test_related_hint_is_checked(db):
+    class Articles(ReadOnlyModelController[Article, ArticleBrief]):
+        related = ("nope",)
+
+    assert "ninja_devx.W006" in [message.id for message in Articles.checks()]

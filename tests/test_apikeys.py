@@ -2,7 +2,7 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth.models import User
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 from django.utils import timezone
 from ninja import NinjaAPI
 from ninja.testing import TestAsyncClient, TestClient
@@ -17,12 +17,46 @@ from ninja_devx.contrib.apikeys.auth import (
     RequiresScope,
     create_api_key,
     revoke_api_key,
+    rotate_api_key,
     scope_allows,
 )
 from ninja_devx.contrib.apikeys.models import APIKey
 from ninja_devx.testing.clients import assert_max_hops
 
 pytestmark = pytest.mark.django_db
+
+
+def test_rotate_api_key_replaces_the_secret_and_keeps_the_row():
+    owner = User.objects.create(username="rotate-owner")
+    key, old_raw = create_api_key(owner, "deploys", scopes=["orders:read"])
+    old_prefix = key.prefix
+    rotated, new_raw = rotate_api_key(key, scopes=["orders:read", "orders:write"])
+    assert rotated.pk == key.pk
+    assert rotated.prefix != old_prefix
+    assert rotated.scopes == ["orders:read", "orders:write"]
+    assert new_raw.startswith("ndx_")
+    assert new_raw != old_raw
+
+
+def test_rotate_refuses_revoked_keys_and_clears_limits():
+    owner = User.objects.create(username="rotate-limits")
+    key, _ = create_api_key(owner, "limits", rate_limit="10/m")
+    rotated, _ = rotate_api_key(key, rate_limit=None)
+    assert rotated.rate_limit == ""
+    rotated, _ = rotate_api_key(key, rate_limit="5/m")
+    assert rotated.rate_limit == "5/m"
+    revoke_api_key(key)
+    with pytest.raises(ValueError, match="revoked"):
+        rotate_api_key(key)
+    with pytest.raises(CommandError, match="revoked"):
+        call_command("devx_apikey", "rotate", "--prefix", key.prefix)
+
+
+def test_rotate_command_prints_the_new_key(capsys):
+    owner = User.objects.create(username="rotate-cmd")
+    key, _ = create_api_key(owner, "cmd")
+    call_command("devx_apikey", "rotate", "--prefix", key.prefix)
+    assert "Rotated" in capsys.readouterr().out
 
 
 def test_key_pagination_is_bounded_and_owner_scoped():

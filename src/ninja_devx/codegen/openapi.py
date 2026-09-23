@@ -57,6 +57,10 @@ class Operation:
     """Whether any documented success response has a body."""
     response_variants: tuple[ResponseVariant, ...] = ()
     body_media_type: str = "application/json"
+    errors: tuple[ResponseVariant, ...] = ()
+    """Documented non-2xx responses that carry a body."""
+    streaming: bool = False
+    """A 2xx ``text/event-stream`` response, generated as an event iterator."""
 
 
 def load_api(path: str) -> NinjaAPI:
@@ -121,12 +125,7 @@ def read_operations(document: Schema) -> list[Operation]:
                 parameter = _resolve(document, raw_parameter, "parameters")
                 location = _location(parameter.get("in"))
                 name = str(parameter["name"])
-                if location == "cookie":
-                    raise ValueError(
-                        f"{operation_id}: cookie parameter {name!r} is unsupported; "
-                        "configure session credentials on the HTTP client"
-                    )
-                expected_style = "form" if location == "query" else "simple"
+                expected_style = "form" if location in ("query", "cookie") else "simple"
                 if parameter.get("style", expected_style) != expected_style:
                     raise ValueError(f"{operation_id}: unsupported parameter style for {name!r}")
                 if location == "query" and parameter.get("explode", True) is not True:
@@ -164,14 +163,6 @@ def read_operations(document: Schema) -> list[Operation]:
                         raise ValueError(
                             f"{operation_id}: unsupported multipart field {field_name!r}"
                         )
-                required = set(as_strings(resolved.get("required")))
-                if not any(
-                    name in required and _mapping(value).get("format") == "binary"
-                    for name, value in _mapping(resolved.get("properties")).items()
-                ):
-                    raise ValueError(
-                        f"{operation_id}: unsupported multipart body without a required file"
-                    )
                 body_media_type = "multipart/form-data"
             if body and body_schema is None:
                 raise ValueError(
@@ -182,7 +173,8 @@ def read_operations(document: Schema) -> list[Operation]:
                 code: _resolve(document, value, "responses")
                 for code, value in _mapping(operation.get("responses")).items()
             }
-            response, has_body, variants = _success_schema(responses, operation_id)
+            response, has_body, variants, streaming = _success_schema(responses, operation_id)
+            errors = _error_variants(responses)
             operations.append(
                 Operation(
                     operation_id=operation_id,
@@ -196,6 +188,8 @@ def read_operations(document: Schema) -> list[Operation]:
                     has_body=has_body,
                     response_variants=variants,
                     body_media_type=body_media_type,
+                    errors=errors,
+                    streaming=streaming,
                 )
             )
     return operations
@@ -220,10 +214,11 @@ def _resolve(document: Schema, value: object, section: str) -> Schema:
 
 def _success_schema(
     responses: Schema, operation_id: str
-) -> tuple[Schema | None, bool, tuple[ResponseVariant, ...]]:
+) -> tuple[Schema | None, bool, tuple[ResponseVariant, ...], bool]:
     schemas: list[Schema] = []
     variants: list[ResponseVariant] = []
     has_body = False
+    streaming = False
     for code, raw in sorted(responses.items()):
         if not code.startswith("2"):
             continue
@@ -242,9 +237,11 @@ def _success_schema(
             continue
         for media_type, representation in content.items():
             media_type = media_type.split(";", 1)[0].lower()
+            schema: Schema
             if media_type == "text/event-stream":
-                raise ValueError(f"{operation_id}: streaming responses are unsupported")
-            if _is_json(media_type):
+                schema = {"type": "string", "x-event-stream": True}
+                streaming = True
+            elif _is_json(media_type):
                 schema = _mapping(_mapping(representation).get("schema"))
             elif media_type.startswith("text/"):
                 schema = {"type": "string"}
@@ -254,8 +251,24 @@ def _success_schema(
             if schema not in schemas:
                 schemas.append(schema)
     if not has_body:
-        return None, False, tuple(variants)
-    return (schemas[0] if len(schemas) == 1 else {"anyOf": schemas}), True, tuple(variants)
+        return None, False, tuple(variants), streaming
+    if streaming:
+        return None, False, tuple(variants), True
+    return (schemas[0] if len(schemas) == 1 else {"anyOf": schemas}), True, tuple(variants), False
+
+
+def _error_variants(responses: Schema) -> tuple[ResponseVariant, ...]:
+    """Documented non-2xx JSON responses, so generated clients can type error bodies."""
+    found: list[ResponseVariant] = []
+    for code, raw in sorted(responses.items()):
+        if code.startswith("2"):
+            continue
+        for media_type, representation in _mapping(_mapping(raw).get("content")).items():
+            media_type = media_type.split(";", 1)[0].lower()
+            if _is_json(media_type):
+                error_schema = _mapping(_mapping(representation).get("schema"))
+                found.append(ResponseVariant(code, media_type, error_schema))
+    return tuple(found)
 
 
 def _is_json(media_type: str) -> bool:

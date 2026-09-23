@@ -18,4 +18,4 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-install-project --group docs --group verification
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --group docs --group verification
-CMD ["python", "tools/verify_local.py", "--output", "/tmp/devx-validation", "--timeout", "300"]
+CMD ["python", "tools/verify_local.py", "--output", "/tmp/devx-validation", "--timeout", "300", "--fail-under", "90"]

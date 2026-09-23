@@ -20,6 +20,19 @@ A new map where `exception` (and subclasses) produce `status`.
 | `code` | `str \| None` | `None` | Machine-readable code (default: the class name in snake_case). |
 | `body` | `Callable[[E], Mapping[str, JSONValue]] \| None` | `None` | Builds the body from the exception (default `{detail, code}` or `error_body()`). |
 
+### `mask_validation_input()`
+
+```python
+def mask_validation_input(errors: Iterable[Mapping[str, JSONValue]], schema: type[object] | None = None) -> list[dict[str, JSONValue]]: ...
+```
+
+Mask `Sensitive` field values a validation error body would otherwise echo back.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `errors` | `Iterable[Mapping[str, JSONValue]]` | — | Error items shaped like pydantic's/Ninja's (a `loc`, optionally an `input`). |
+| `schema` | `type[object] \| None` | `None` | The schema `errors` were raised against; without one nothing is masked. |
+
 ### `DomainError()`
 
 ```python

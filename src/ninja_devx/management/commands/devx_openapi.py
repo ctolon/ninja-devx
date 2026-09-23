@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
 from ninja_devx.codegen import generate_python, generate_typescript, load_api
+from ninja_devx.tooling.openapi_diff import diff, has_breaking
 
 
 class Command(BaseCommand):
@@ -32,6 +34,14 @@ class Command(BaseCommand):
             action="store_true",
             help="fail if --output is missing or outdated (for CI)",
         )
+        parser.add_argument(
+            "--against",
+            metavar="BASELINE.json",
+            help=(
+                "compare with a previous OpenAPI document and fail on breaking changes; "
+                "with --output the new document is written afterwards"
+            ),
+        )
 
     def handle(self, *args: object, **options: object) -> None:
         try:
@@ -40,6 +50,26 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
         prefix = options["path_prefix"]
         document = api.get_openapi_schema(path_prefix=str(prefix) if prefix is not None else None)
+
+        if options["against"]:
+            baseline_path = Path(str(options["against"]))
+            if not baseline_path.exists():
+                raise CommandError(f"baseline {baseline_path} does not exist")
+            try:
+                baseline = json.loads(baseline_path.read_text())
+            except ValueError as exc:
+                raise CommandError(f"baseline {baseline_path} is not valid JSON: {exc}") from exc
+            if not isinstance(baseline, dict):
+                raise CommandError(f"baseline {baseline_path} must be a JSON object")
+            changes = diff(cast("dict[str, object]", baseline), cast("dict[str, object]", document))
+            for change in changes:
+                self.stdout.write(change.render())
+            if has_breaking(changes):
+                raise CommandError("Breaking OpenAPI changes detected")
+            self.stdout.write(self.style.SUCCESS("No breaking OpenAPI changes"))
+            if not options["output"]:
+                return
+
         output_format = str(options["format"])
         try:
             if output_format == "typescript":

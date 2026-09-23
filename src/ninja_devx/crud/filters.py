@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
 from typing import Annotated, Final
 
-from django.db.models import Model
+from django.db.models import Model, Q
 from ninja import FilterLookup, FilterSchema
 
 from .._internal.cache import owned_cache
@@ -22,6 +22,10 @@ FilterFields = Mapping[str, Sequence[str]]
 
 class EmptyFilters(FilterSchema):
     pass
+
+
+def _applied_by_backend(self: FilterSchema, value: object) -> Q:
+    return Q()
 
 
 def _same(value: object) -> object:
@@ -89,15 +93,19 @@ def _build(controller: type[object]) -> type[FilterSchema]:
     if not search_fields and not filter_fields:
         return EmptyFilters
 
-    get_model: Callable[[], type[Model]] = getattr(controller, "get_model")  # noqa: B009
+    get_model: Callable[[], type[Model]] = getattr(controller, "get_model")  # noqa: B009 - typed
     model = get_model()
+    search_param: str = getattr(controller, "search_param", "search")
+    backend_search = search_fields and getattr(controller, "search_backend", None) is not None
     fields: dict[str, tuple[object, None]] = {}
     if search_fields:
         for name in search_fields:
             resolve_field(model, name)  # validates the path
-        search_param: str = getattr(controller, "search_param", "search")
-        lookups = [f"{name}__icontains" for name in search_fields]
-        fields[search_param] = (Annotated[str | None, FilterLookup(lookups)], None)
+        if backend_search:
+            fields[search_param] = (str | None, None)
+        else:
+            lookups = [f"{name}__icontains" for name in search_fields]
+            fields[search_param] = (Annotated[str | None, FilterLookup(lookups)], None)
 
     for name, lookups_for_field in filter_fields.items():
         python_type = field_type(resolve_field(model, name), choices=True)
@@ -116,4 +124,7 @@ def _build(controller: type[object]) -> type[FilterSchema]:
                 None,
             )
 
-    return build_schema(f"{controller.__name__}Filters", FilterSchema, fields)
+    schema = build_schema(f"{controller.__name__}Filters", FilterSchema, fields)
+    if backend_search:
+        setattr(schema, f"filter_{search_param}", _applied_by_backend)
+    return schema

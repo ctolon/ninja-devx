@@ -1,0 +1,78 @@
+import json
+import logging
+import os
+from pathlib import Path
+from urllib.parse import urlparse
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "{{ secret_key }}")
+DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+
+INSTALLED_APPS = [
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "ninja_devx",  # controllers, CRUD, permissions and DI
+    # "ninja_devx.contrib.apikeys",  # scoped API keys for scripts and integrations
+    # "ninja_devx.contrib.audit",  # record who changed what
+    # "ninja_devx.contrib.grants",  # per-object permissions, one table, no extra dependency
+    # "ninja_devx.contrib.webhooks",  # deliver domain events to other systems reliably
+]
+
+MIDDLEWARE = [
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+]
+
+ROOT_URLCONF = "config.urls"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+USE_TZ = True
+
+# Request id, security header and hardening middleware, plus error mapping, are wired
+# through ninja_devx.plugins.install in config/api.py, not Django's MIDDLEWARE.
+NINJA_DEVX = {"CHECK_APIS": ["config.api.api"]}
+
+
+def _database_from_url(url: str) -> dict[str, object]:
+    """SQLite by default; ``postgresql://user:password@host:5432/name`` from DATABASE_URL."""
+    parsed = urlparse(url)
+    if parsed.scheme in {"postgres", "postgresql"}:
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": parsed.path.lstrip("/"),
+            "USER": parsed.username or "",
+            "PASSWORD": parsed.password or "",
+            "HOST": parsed.hostname or "",
+            "PORT": str(parsed.port or 5432),
+        }
+    return {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}
+
+
+DATABASES = {"default": _database_from_url(os.environ.get("DATABASE_URL", ""))}
+
+
+class JsonFormatter(logging.Formatter):
+    """One JSON object per line: easy to parse, easy to grep in a container's console."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, object] = {
+            "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload)
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"json": {"()": f"{__name__}.JsonFormatter"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "json"}},
+    "root": {"handlers": ["console"], "level": "INFO"},
+}
