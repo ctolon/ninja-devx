@@ -2,7 +2,7 @@
 FROM golang@sha256:f44f6e88636cfb311f9ebace870ded69d943f227bb3cb27d32ffd84ea18c43ea AS build
 ENV CGO_ENABLED=0 GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
 RUN GOBIN=/out go install github.com/minio/minio@RELEASE.2025-04-22T22-12-26Z
-FROM python@sha256:e06cc1111ed84189e91866447f562b89faadbfbbb9937cd67e6bf4172cdb45df
+FROM python@sha256:be8ccd085666c34273c9dc5607c9842f8b2e3116128aae45148ce164c07ce09d
 COPY --from=build /out/minio /usr/local/bin/minio
 USER 65532:65532
 EXPOSE 9000
