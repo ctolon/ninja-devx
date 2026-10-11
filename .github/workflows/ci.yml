@@ -77,7 +77,7 @@ jobs:
       - name: Save coverage
         if: always()
         run: docker cp devx-ci-tests:/tmp/devx-validation ./artifacts
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: coverage
@@ -130,13 +130,13 @@ jobs:
       - run: uv run --no-sync twine check --strict dist/*
       - run: uv run --no-sync python tools/verify_package.py dist/*.whl --report extras.json
       - run: uv run --no-sync python tools/verify_sdist.py dist/*.tar.gz
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: distributions
           path: dist/*
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-checks
           path: extras.json
@@ -153,6 +153,6 @@ jobs:
       - run: uv sync --locked --group verification
       - run: uv export --locked --all-extras --no-dev --no-emit-project --format requirements-txt --output-file audit-requirements.txt
       - run: uv run --no-sync pip-audit --requirement audit-requirements.txt --format json --output audit.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with: {name: dependency-audit, path: audit.json, retention-days: 14}
